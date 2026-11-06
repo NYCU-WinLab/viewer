@@ -59,6 +59,14 @@ export function StickyNote({
 }) {
   const [draft, setDraft] = React.useState("")
   const [busy, setBusy] = React.useState(false)
+  const box = React.useRef<HTMLTextAreaElement>(null)
+
+  // Focus the box without scrolling: the note sits next to its mark, and a
+  // scroll would move the mark away from the reader.
+  React.useEffect(() => {
+    const timer = setTimeout(() => box.current?.focus({ preventScroll: true }))
+    return () => clearTimeout(timer)
+  }, [])
 
   const send = async () => {
     const body = draft.trim()
@@ -170,7 +178,7 @@ export function StickyNote({
             {canComment && (
               <div className="flex flex-col gap-2">
                 <Textarea
-                  autoFocus
+                  ref={box}
                   value={draft}
                   onChange={(event) => setDraft(event.target.value)}
                   onKeyDown={(event) => {
