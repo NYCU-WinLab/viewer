@@ -1,0 +1,72 @@
+name: ${COMPOSE_PROJECT_NAME:-viewer}
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: viewer
+      POSTGRES_USER: viewer
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "viewer", "-d", "viewer"]
+      interval: 5s
+      retries: 20
+
+  # One-shot: applies drizzle/*.sql, then web starts.
+  migrate:
+    image: ghcr.io/nycu-winlab/viewer:${VIEWER_VERSION:-main}
+    command: ["node", "migrate.mjs"]
+    environment:
+      DATABASE_URL: postgres://viewer:${POSTGRES_PASSWORD}@postgres:5432/viewer
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    image: ghcr.io/nycu-winlab/viewer:${VIEWER_VERSION:-main}
+    restart: unless-stopped
+    init: true
+    # Next waits for open event streams on SIGTERM; cut them short.
+    stop_grace_period: 3s
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://viewer:${POSTGRES_PASSWORD}@postgres:5432/viewer
+      CONVERT_URL: http://convert:3000
+    ports:
+      - ${VIEWER_BIND:-127.0.0.1}:${VIEWER_PORT:-3000}:3000
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      convert:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://localhost:3000/.well-known/oauth-protected-resource').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))
+      interval: 10s
+      retries: 10
+      start_period: 60s
+      start_interval: 1s
+
+  # docx and pptx to PDF: Gotenberg with the lab's fonts (convert/).
+  convert:
+    image: ghcr.io/nycu-winlab/viewer-convert:${VIEWER_VERSION:-main}
+    restart: unless-stopped
+    command:
+      - gotenberg
+      - --api-timeout=120s
+      - --chromium-auto-start=false
+      - --libreoffice-auto-start=true
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3000/health"]
+      interval: 10s
+      retries: 10
+      start_period: 60s
+
+volumes:
+  postgres:
