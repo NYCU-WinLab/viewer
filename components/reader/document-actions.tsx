@@ -201,9 +201,6 @@ function SharePanel({
           加入
         </Button>
       </div>
-      {shares && shares.length === 0 && (
-        <p className="text-muted-foreground">只有你看得到</p>
-      )}
       {shares && shares.length > 0 && (
         <ul className="flex flex-col">
           {shares.map((s) => (

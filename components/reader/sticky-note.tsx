@@ -199,7 +199,7 @@ export function StickyNote({
 }
 
 // One comment. Its author can rewrite or delete it; an edited one shows
-// 已編輯, which opens its earlier wordings.
+// an Edited button, which opens its earlier wordings.
 function CommentItem({
   note,
   onChanged,

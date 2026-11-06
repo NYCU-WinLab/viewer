@@ -71,14 +71,14 @@ export function UploadForm({
       />
       <DialogFooter>
         <Button onClick={submit} disabled={busy || files.length === 0}>
-          {busy ? "轉檔中" : documentId ? "上傳新版本" : "上傳"}
+          {busy ? "轉檔中…" : documentId ? "上傳新版本" : "上傳"}
         </Button>
       </DialogFooter>
     </div>
   )
 }
 
-// 上傳 in the top right: a new document, opened once it is stored.
+// The Upload button in the top right: a new document, opened once it is stored.
 export function UploadButton() {
   const router = useRouter()
   const [open, setOpen] = React.useState(false)

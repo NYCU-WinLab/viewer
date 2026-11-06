@@ -9,7 +9,7 @@ import { UploadButton } from "@/components/upload-button"
 import { getSession } from "@/lib/auth/session"
 import { runningBuild } from "@/lib/build"
 
-// The viewer's corners: the lab and the page in the breadcrumb, 上傳 in the
+// The viewer's corners: the lab and the page in the breadcrumb, Upload in the
 // top right (it opens over the page), the member's account next to the
 // build in the bottom left.
 export async function ViewerShell({

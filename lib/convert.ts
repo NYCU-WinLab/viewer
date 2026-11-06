@@ -1,6 +1,6 @@
 // Turns docx and pptx into PDF through the convert service (Gotenberg,
 // LibreOffice inside, with fonts that stand in for Times New Roman,
-// Calibri, Arial and 標楷體 at the same widths). PDFs pass through.
+// Calibri, Arial and DFKai-SB at the same widths). PDFs pass through.
 
 const types = {
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

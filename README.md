@@ -26,9 +26,9 @@ WinLab members upload a paper draft, a report or a deck, share it with the peopl
 ## What it does
 
 - **Lists your documents**: your own and the ones shared with you, with how many marks are still open.
-- **Reads PDF, Word and PowerPoint**: docx and pptx turn into PDF at upload, with stand-in fonts at the same widths (Calibri, Times New Roman, Arial, 標楷體).
+- **Reads PDF, Word and PowerPoint**: docx and pptx turn into PDF at upload, with stand-in fonts at the same widths (Calibri, Times New Roman, Arial, DFKai-SB).
 - **Marks with 3 tools**: a highlighter on text, a box over any area (a figure, a table, a slide object) and a pen.
-- **Keeps a sticky note on every mark**: comments with author and time, edit history, and 已處理 to resolve a mark.
+- **Keeps a sticky note on every mark**: comments with author and time, edit history, and a button that marks it resolved.
 - **Keeps versions**: upload a new file to the same document; every version stays readable with its own marks.
 - **Shares per member**: view, comment or edit.
 - **Updates live**: a mark or comment from anyone shows on every open page.
@@ -56,7 +56,7 @@ viewer.winlab.tw deploys on every push to `main`. The release workflow retags th
 
 1. In your Keycloak realm, create a confidential OpenID Connect client with the redirect URI `<BETTER_AUTH_URL>/api/auth/callback/keycloak`, and put its ID and secret in `.env`. Give its service account `view-users`, so sharing can list lab members and `/mcp` can check that a member still exists.
 2. In Nextcloud, create an app password for the account that holds the files, create the folder `NEXTCLOUD_ROOT` in it, and put both in `.env`.
-3. Open `BETTER_AUTH_URL`, sign in and press 上傳.
+3. Open `BETTER_AUTH_URL`, sign in and press Upload (上傳) in the top right.
 4. Add the MCP server to a client, for example `claude mcp add --transport http viewer <BETTER_AUTH_URL>/mcp`, then ask it to call `whoami`.
 
 ## Configure
