@@ -20,6 +20,8 @@ async function* sources(dir: string): AsyncGenerator<string> {
       if (entry.name !== ".well-known") continue
     }
     const path = join(dir, entry.name)
+    // pdf.js assets, copied in by scripts/copy-pdfjs.ts.
+    if (path === join("public", "pdfjs")) continue
     if (entry.isDirectory()) yield* sources(path)
     else if (sourceFile.test(entry.name) && !entry.name.endsWith(".d.ts"))
       yield relative(root, path)
