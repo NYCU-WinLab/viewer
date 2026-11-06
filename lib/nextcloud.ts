@@ -8,6 +8,12 @@ function config() {
   const password = process.env.NEXTCLOUD_APP_PASSWORD
   const root = process.env.NEXTCLOUD_ROOT || "viewer"
   if (!url || !user || !password) throw new Error("Nextcloud 沒有設定")
+  // Plain folder names only: nothing that reads as URL syntax or climbs up.
+  if (
+    !/^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/.test(root) ||
+    root.split("/").some((part) => part === "." || part === "..")
+  )
+    throw new Error(`Bad NEXTCLOUD_ROOT: ${root}`)
   return {
     base: `${url.replace(/\/$/, "")}/remote.php/dav/files/${encodeURIComponent(user)}/${root}`,
     authorization: `Basic ${Buffer.from(`${user}:${password}`).toString("base64")}`,

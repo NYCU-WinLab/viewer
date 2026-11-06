@@ -3,7 +3,7 @@ import { alias } from "drizzle-orm/pg-core"
 import { z } from "zod"
 
 import { requireAccess } from "@/lib/actions/access"
-import { defineAction } from "@/lib/actions/define"
+import { type Actor, defineAction } from "@/lib/actions/define"
 import { db } from "@/lib/db"
 import {
   annotations,
@@ -13,6 +13,9 @@ import {
   documentVersions,
   user,
 } from "@/lib/db/schema"
+
+// Lowercase, matching how ids are stored and named in Nextcloud.
+const uuid = z.uuid().transform((value) => value.toLowerCase())
 
 const fraction = z.number().min(0).max(1)
 const rect = z.tuple([fraction, fraction, fraction, fraction])
@@ -49,7 +52,7 @@ export const listAnnotations = defineAction({
   description:
     "Every mark on one version of a document, in page order: id, tool (highlight, box, pen), page, geometry in page fractions, the quoted text if any, author, whether and by whom it was resolved, and its sticky note thread (each comment with author, body, times, and earlier wordings when edited).",
   kind: "query",
-  input: z.object({ id: z.uuid(), version: z.number().int().positive() }),
+  input: z.object({ id: uuid, version: z.number().int().positive() }),
   run: async (actor, { id, version }) => {
     await requireAccess(actor, id, "view")
     const marks = await db
@@ -140,7 +143,7 @@ export const addAnnotation = defineAction({
     "Marks one page of a document version: highlight (rects over text, with its quote), box (one rect) or pen (a stroke of points). Coordinates are page fractions from the top left. An optional first comment starts its sticky note. Needs comment access.",
   kind: "mutation",
   input: z.object({
-    id: z.uuid(),
+    id: uuid,
     version: z.number().int().positive(),
     tool: z.enum(["highlight", "box", "pen"]),
     page: z.number().int().positive(),
@@ -196,7 +199,7 @@ export const deleteAnnotation = defineAction({
   description:
     "Deletes a mark and its sticky note. Its author can, and anyone with edit access.",
   kind: "mutation",
-  input: z.object({ id: z.uuid() }),
+  input: z.object({ id: uuid }),
   run: async (actor, { id }) => {
     const documentId = await documentOf(id)
     const access = await requireAccess(actor, documentId, "comment")
@@ -217,7 +220,7 @@ export const resolveAnnotation = defineAction({
   description:
     "Marks a mark as handled (resolved: true) or opens it again (false). Needs comment access.",
   kind: "mutation",
-  input: z.object({ id: z.uuid(), resolved: z.boolean() }),
+  input: z.object({ id: uuid, resolved: z.boolean() }),
   run: async (actor, { id, resolved }) => {
     await requireAccess(actor, await documentOf(id), "comment")
     await db
@@ -237,7 +240,7 @@ export const addComment = defineAction({
   title: "留言",
   description: "Adds a comment to a mark's sticky note. Needs comment access.",
   kind: "mutation",
-  input: z.object({ annotationId: z.uuid(), body }),
+  input: z.object({ annotationId: uuid, body }),
   run: async (actor, input) => {
     await requireAccess(actor, await documentOf(input.annotationId), "comment")
     const [note] = await db
@@ -248,14 +251,21 @@ export const addComment = defineAction({
   },
 })
 
-/** The comment, after checking the member wrote it. */
-async function ownComment(actorId: string, commentId: string) {
+/** The comment, after checking the member may still comment on its
+ * document and wrote it. */
+async function ownComment(actor: Actor, commentId: string) {
   const [note] = await db
-    .select({ authorId: comments.authorId, body: comments.body })
+    .select({
+      authorId: comments.authorId,
+      body: comments.body,
+      documentId: annotations.documentId,
+    })
     .from(comments)
+    .innerJoin(annotations, eq(annotations.id, comments.annotationId))
     .where(eq(comments.id, commentId))
   if (!note) throw new Error("找不到這則留言")
-  if (note.authorId !== actorId) throw new Error("只能改自己的留言")
+  await requireAccess(actor, note.documentId, "comment")
+  if (note.authorId !== actor.userId) throw new Error("只能改自己的留言")
   return note
 }
 
@@ -265,9 +275,9 @@ export const editComment = defineAction({
   description:
     "Rewrites the member's own comment; the earlier wording is kept and shown as its history.",
   kind: "mutation",
-  input: z.object({ id: z.uuid(), body }),
+  input: z.object({ id: uuid, body }),
   run: async (actor, input) => {
-    const note = await ownComment(actor.userId, input.id)
+    const note = await ownComment(actor, input.id)
     if (note.body === input.body) return { id: input.id }
     await db.transaction(async (tx) => {
       await tx
@@ -288,9 +298,9 @@ export const deleteComment = defineAction({
   description:
     "Deletes one of the member's own comments from a sticky note, with its earlier wordings. Other members' comments cannot be deleted.",
   kind: "mutation",
-  input: z.object({ id: z.uuid() }),
+  input: z.object({ id: uuid }),
   run: async (actor, { id }) => {
-    await ownComment(actor.userId, id)
+    await ownComment(actor, id)
     await db.delete(comments).where(eq(comments.id, id))
     return { id }
   },

@@ -20,7 +20,8 @@ import { deleteDocumentFiles, putDocumentFiles } from "@/lib/nextcloud"
 
 export const MAX_DOCUMENT_BYTES = 100 * 1024 * 1024
 
-const id = z.uuid("文件 id 格式不對")
+// Lowercase, so one document never maps to two Nextcloud folders.
+const id = z.uuid("文件 id 格式不對").transform((value) => value.toLowerCase())
 
 /** The kind of an upload, from its name; anything else is refused. */
 export function kindOf(fileName: string): DocumentKind {
@@ -309,7 +310,7 @@ export const shareDocument = defineAction({
   name: "share_document",
   title: "共用文件",
   description:
-    "Shares a document with a lab member (id from list_members) as view, comment or edit, or changes their role. Needs edit access; only the owner can hand out edit.",
+    "Shares a document with a lab member (id from list_members) as view, comment or edit, or changes their role. Needs edit access; only the owner can hand out edit or change an editor's role.",
   kind: "mutation",
   input: z.object({ id, memberId: z.string().min(1), role }),
   run: async (actor, input) => {
@@ -317,23 +318,38 @@ export const shareDocument = defineAction({
     if (input.role === "edit" && access !== "owner")
       throw new Error("只有擁有者可以給編輯權限")
     const userId = await memberUserId(input.memberId)
-    const [doc] = await db
-      .select({ ownerId: documents.ownerId })
-      .from(documents)
-      .where(eq(documents.id, input.id))
-    if (doc.ownerId === userId) throw new Error("擁有者本來就有全部權限")
-    await db
-      .insert(documentGrants)
-      .values({
-        documentId: input.id,
-        userId,
-        role: input.role,
-        grantedBy: actor.userId,
-      })
-      .onConflictDoUpdate({
-        target: [documentGrants.documentId, documentGrants.userId],
-        set: { role: input.role, grantedBy: actor.userId },
-      })
+    await db.transaction(async (tx) => {
+      // Locks the document's row, so two shares cannot race past the check.
+      const [doc] = await tx
+        .select({ ownerId: documents.ownerId })
+        .from(documents)
+        .where(eq(documents.id, input.id))
+        .for("update")
+      if (doc.ownerId === userId) throw new Error("擁有者本來就有全部權限")
+      const [current] = await tx
+        .select({ role: documentGrants.role })
+        .from(documentGrants)
+        .where(
+          and(
+            eq(documentGrants.documentId, input.id),
+            eq(documentGrants.userId, userId)
+          )
+        )
+      if (current?.role === "edit" && access !== "owner")
+        throw new Error("只有擁有者可以變更編輯者")
+      await tx
+        .insert(documentGrants)
+        .values({
+          documentId: input.id,
+          userId,
+          role: input.role,
+          grantedBy: actor.userId,
+        })
+        .onConflictDoUpdate({
+          target: [documentGrants.documentId, documentGrants.userId],
+          set: { role: input.role, grantedBy: actor.userId },
+        })
+    })
     return { id: input.id, userId, role: input.role }
   },
 })
@@ -344,20 +360,30 @@ export const unshareDocument = defineAction({
   description:
     "Stops sharing a document with a member (userId from list_document_shares). Needs edit access; only the owner can remove an editor.",
   kind: "mutation",
-  input: z.object({ id, userId: z.uuid() }),
+  input: z.object({
+    id,
+    userId: z.uuid().transform((value) => value.toLowerCase()),
+  }),
   run: async (actor, input) => {
     const access = await requireAccess(actor, input.id, "edit")
     const where = and(
       eq(documentGrants.documentId, input.id),
       eq(documentGrants.userId, input.userId)
     )
-    const [grant] = await db
-      .select({ role: documentGrants.role })
-      .from(documentGrants)
-      .where(where)
-    if (grant?.role === "edit" && access !== "owner")
-      throw new Error("只有擁有者可以移除編輯者")
-    await db.delete(documentGrants).where(where)
+    await db.transaction(async (tx) => {
+      await tx
+        .select({ id: documents.id })
+        .from(documents)
+        .where(eq(documents.id, input.id))
+        .for("update")
+      const [grant] = await tx
+        .select({ role: documentGrants.role })
+        .from(documentGrants)
+        .where(where)
+      if (grant?.role === "edit" && access !== "owner")
+        throw new Error("只有擁有者可以移除編輯者")
+      await tx.delete(documentGrants).where(where)
+    })
     return { id: input.id, userId: input.userId }
   },
 })
