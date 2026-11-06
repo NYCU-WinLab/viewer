@@ -28,6 +28,9 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-overlay: var(--overlay);
+  --color-marker: var(--marker);
+  --color-note: var(--note);
+  --color-note-foreground: var(--note-foreground);
   --color-destructive: var(--destructive);
   --color-muted-foreground: var(--muted-foreground);
   --color-muted: var(--muted);
@@ -53,6 +56,10 @@
   --destructive: oklch(0.577 0.245 27.325);
   --success: oklch(0.52 0.09 185);
   --warning: oklch(0.55 0.112 85);
+  /* Paper colors: pages are white paper in both themes. */
+  --marker: oklch(0.93 0.19 105);
+  --note: oklch(0.94 0.11 98);
+  --note-foreground: oklch(0.3 0.04 85);
   --border: oklch(0.89 0.005 85);
   --overlay: oklch(0.97 0.005 85 / 85%);
   --input: oklch(0.89 0.005 85);
@@ -69,6 +76,10 @@
   --destructive: oklch(0.704 0.191 22.216);
   --success: oklch(0.78 0.1 185);
   --warning: oklch(0.84 0.12 85);
+  /* Paper colors: pages are white paper in both themes. */
+  --marker: oklch(0.93 0.19 105);
+  --note: oklch(0.94 0.11 98);
+  --note-foreground: oklch(0.3 0.04 85);
   --border: oklch(1 0 0 / 10%);
   --overlay: oklch(0.17 0 0 / 85%);
   --input: oklch(1 0 0 / 15%);

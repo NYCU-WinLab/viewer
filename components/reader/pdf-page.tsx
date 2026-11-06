@@ -71,6 +71,9 @@ export function PdfPage({
   const [near, setNear] = React.useState(false)
   const [drawing, setDrawing] = React.useState<[number, number][] | null>(null)
   const height = (width * size.height) / size.width
+  // The svg stretches 0..1 to the page, so a 4 px corner is a different
+  // fraction across and down.
+  const corner = width ? { rx: 4 / width, ry: 4 / height } : {}
 
   React.useEffect(() => {
     const element = frame.current
@@ -202,6 +205,7 @@ export function PdfPage({
           <MarkShape
             key={mark.id}
             mark={mark}
+            corner={corner}
             selected={mark.id === selected}
             clickable={marksClickable}
             onSelect={() => onSelect(mark.id)}
@@ -213,8 +217,9 @@ export function PdfPage({
             y={Math.min(drawing[0][1], drawing[1][1])}
             width={Math.abs(drawing[1][0] - drawing[0][0])}
             height={Math.abs(drawing[1][1] - drawing[0][1])}
+            {...corner}
             vectorEffect="non-scaling-stroke"
-            className="fill-primary/10 stroke-primary stroke-2"
+            className="fill-primary/10 stroke-primary stroke-2 mix-blend-multiply"
           />
         )}
         {drawing && mode === "pen" && (
@@ -233,11 +238,13 @@ export function PdfPage({
 // fade; the selected one is drawn heavier.
 function MarkShape({
   mark,
+  corner,
   selected,
   clickable,
   onSelect,
 }: {
   mark: Mark
+  corner: { rx?: number; ry?: number }
   selected: boolean
   clickable: boolean
   onSelect: () => void
@@ -280,15 +287,18 @@ function MarkShape({
           y={y}
           width={w}
           height={h}
+          {...(mark.tool === "box" ? corner : {})}
           vectorEffect="non-scaling-stroke"
+          // Multiply, like ink on paper: the color tints the page behind the
+          // text, and the black text stays black.
           className={
             mark.tool === "highlight"
               ? cn(
-                  "fill-warning/30 mix-blend-multiply dark:mix-blend-screen",
-                  selected && "fill-warning/50"
+                  "fill-marker mix-blend-multiply",
+                  selected && "stroke-marker stroke-4"
                 )
               : cn(
-                  "fill-primary/5 stroke-primary",
+                  "fill-primary/5 stroke-primary mix-blend-multiply",
                   selected ? "stroke-4" : "stroke-2"
                 )
           }
