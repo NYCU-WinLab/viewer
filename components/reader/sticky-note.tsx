@@ -8,13 +8,11 @@ import { toast } from "sonner"
 import { comment, resolve, reword, uncomment, unmark } from "@/app/actions"
 import type { Comment, Mark } from "@/components/reader/types"
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { cn } from "@/lib/utils"
 
 const when = new Intl.DateTimeFormat("zh-TW", {
   timeZone: "Asia/Taipei",
@@ -29,8 +27,6 @@ export function formatWhen(iso: string) {
   return when.format(new Date(iso))
 }
 
-const toolNames = { highlight: "螢光筆", box: "框選", pen: "原子筆" } as const
-
 /** Runs a server action and toasts its error; true when it worked. */
 async function attempt(result: Promise<{ error?: string }>) {
   const { error } = await result
@@ -38,9 +34,10 @@ async function attempt(result: Promise<{ error?: string }>) {
   return !error
 }
 
-// The sticky note of one mark, held next to it on the page: who marked it,
-// the thread of comments and a box to add one. It opens when a mark is
-// clicked or just drawn.
+// The sticky note of one mark: a square of yellow paper next to it. It
+// opens blank and ready to type; Enter sticks the words on (Shift+Enter is a
+// new line), and closing the note keeps what was typed. Earlier notes sit
+// above, signed with a name only.
 export function StickyNote({
   mark,
   anchor,
@@ -70,17 +67,23 @@ export function StickyNote({
 
   const send = async () => {
     const body = draft.trim()
-    if (!body) return
+    if (!body || busy) return true
     setBusy(true)
-    if (await attempt(comment({ annotationId: mark.id, body }))) {
+    const ok = await attempt(comment({ annotationId: mark.id, body }))
+    if (ok) {
       setDraft("")
       onChanged()
     }
     setBusy(false)
+    return ok
+  }
+
+  const close = async () => {
+    if (await send()) onClose()
   }
 
   return (
-    <PopoverPrimitive.Root open onOpenChange={(open) => !open && onClose()}>
+    <PopoverPrimitive.Root open onOpenChange={(open) => !open && close()}>
       <PopoverPrimitive.Portal>
         <PopoverPrimitive.Positioner
           anchor={anchor}
@@ -90,80 +93,10 @@ export function StickyNote({
           collisionPadding={16}
           className="isolate z-40"
         >
-          <PopoverPrimitive.Popup className="flex max-h-120 w-80 flex-col gap-3 overflow-y-auto rounded-menu border border-border bg-overlay p-4 text-body text-foreground shadow-md outline-hidden backdrop-blur-md duration-overlay data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95">
-            <header className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="font-medium">
-                  {mark.author ?? "已離開的成員"}
-                  <span className="ml-2 text-muted-foreground">
-                    {toolNames[mark.tool]}
-                  </span>
-                </p>
-                <p className="text-muted-foreground">
-                  {formatWhen(mark.createdAt)}
-                  {mark.resolvedAt &&
-                    `，${mark.resolvedBy ?? "有人"}標為已處理`}
-                </p>
-              </div>
-              <div className="flex shrink-0">
-                {canComment && (
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label={mark.resolvedAt ? "重新打開" : "已處理"}
-                          onClick={async () => {
-                            if (
-                              await attempt(
-                                resolve({
-                                  id: mark.id,
-                                  resolved: !mark.resolvedAt,
-                                })
-                              )
-                            )
-                              onChanged()
-                          }}
-                        />
-                      }
-                    >
-                      {mark.resolvedAt ? <RotateCcwIcon /> : <CheckIcon />}
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      {mark.resolvedAt ? "重新打開" : "已處理"}
-                    </TooltipContent>
-                  </Tooltip>
-                )}
-                {(mark.mine || canManage) && (
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label="刪除標記"
-                          onClick={async () => {
-                            if (await attempt(unmark({ id: mark.id }))) {
-                              onClose()
-                              onChanged()
-                            }
-                          }}
-                        />
-                      }
-                    >
-                      <Trash2Icon />
-                    </TooltipTrigger>
-                    <TooltipContent>刪除標記</TooltipContent>
-                  </Tooltip>
-                )}
-              </div>
-            </header>
-            {mark.quote?.exact && (
-              <blockquote className="line-clamp-3 border-l-2 border-warning pl-3 text-muted-foreground">
-                {mark.quote.exact}
-              </blockquote>
-            )}
+          <PopoverPrimitive.Popup
+            aria-label="便利貼"
+            className="group/note flex max-h-120 min-h-56 w-64 flex-col gap-3 overflow-y-auto rounded-control bg-note p-4 text-body text-note-foreground shadow-md outline-hidden duration-overlay data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95"
+          >
             {mark.comments.length > 0 && (
               <ol className="flex flex-col gap-3">
                 {mark.comments.map((note) => (
@@ -176,33 +109,87 @@ export function StickyNote({
               </ol>
             )}
             {canComment && (
-              <div className="flex flex-col gap-2">
-                <Textarea
-                  ref={box}
-                  value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (
-                      event.key === "Enter" &&
-                      (event.metaKey || event.ctrlKey)
-                    )
-                      send()
-                  }}
-                  placeholder={mark.comments.length ? "回覆" : "寫下你的想法"}
-                  aria-label="留言"
-                  disabled={busy}
-                />
-                <div className="flex justify-end">
-                  <Button onClick={send} disabled={busy || !draft.trim()}>
-                    留言
-                  </Button>
-                </div>
-              </div>
+              <textarea
+                ref={box}
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (
+                    event.key === "Enter" &&
+                    !event.shiftKey &&
+                    !event.nativeEvent.isComposing
+                  ) {
+                    event.preventDefault()
+                    send()
+                  }
+                }}
+                aria-label="留言"
+                disabled={busy}
+                className="field-sizing-content min-h-24 flex-1 resize-none bg-transparent outline-none"
+              />
             )}
+            <footer className="flex justify-end gap-1 opacity-0 transition-opacity duration-state group-hover/note:opacity-100 focus-within:opacity-100">
+              {canComment && (
+                <NoteButton
+                  label={mark.resolvedAt ? "重新打開" : "已處理"}
+                  onClick={async () => {
+                    if (
+                      await attempt(
+                        resolve({ id: mark.id, resolved: !mark.resolvedAt })
+                      )
+                    )
+                      onChanged()
+                  }}
+                >
+                  {mark.resolvedAt ? <RotateCcwIcon /> : <CheckIcon />}
+                </NoteButton>
+              )}
+              {(mark.mine || canManage) && (
+                <NoteButton
+                  label="刪除標記"
+                  onClick={async () => {
+                    if (await attempt(unmark({ id: mark.id }))) {
+                      onClose()
+                      onChanged()
+                    }
+                  }}
+                >
+                  <Trash2Icon />
+                </NoteButton>
+              )}
+            </footer>
           </PopoverPrimitive.Popup>
         </PopoverPrimitive.Positioner>
       </PopoverPrimitive.Portal>
     </PopoverPrimitive.Root>
+  )
+}
+
+function NoteButton({
+  label,
+  onClick,
+  children,
+}: {
+  label: string
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            aria-label={label}
+            onClick={onClick}
+            className="flex size-8 items-center justify-center rounded-control text-note-foreground/60 hover:bg-note-foreground/10 hover:text-note-foreground [&_svg]:size-4"
+          />
+        }
+      >
+        {children}
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -227,16 +214,16 @@ function CommentItem({
   }
 
   return (
-    <li className="flex flex-col gap-1">
-      <p className="flex items-baseline gap-2">
-        <span className="font-medium">{note.author ?? "已離開的成員"}</span>
-        <span className="text-muted-foreground">
-          {formatWhen(note.createdAt)}
-        </span>
+    <li className="group/comment flex flex-col gap-1">
+      <p
+        className="flex items-baseline gap-2 text-note-foreground/60"
+        title={formatWhen(note.createdAt)}
+      >
+        <span>{note.author ?? "已離開的成員"}</span>
         {note.editedAt && (
           <button
             type="button"
-            className="text-muted-foreground hover:text-foreground"
+            className="hover:text-note-foreground"
             onClick={() => setHistory(!history)}
           >
             已編輯
@@ -245,11 +232,12 @@ function CommentItem({
       </p>
       {editing ? (
         <div className="flex flex-col gap-2">
-          <Textarea
+          <textarea
             autoFocus
             value={text}
             onChange={(event) => setText(event.target.value)}
             aria-label="修改留言"
+            className="field-sizing-content resize-none rounded-control bg-note-foreground/5 p-2 outline-none"
           />
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setEditing(false)}>
@@ -264,7 +252,7 @@ function CommentItem({
         <p className="break-words whitespace-pre-wrap">{note.body}</p>
       )}
       {history && (
-        <ol className="flex flex-col gap-1 border-l-2 border-border pl-3 text-muted-foreground">
+        <ol className="flex flex-col gap-1 border-l-2 border-note-foreground/20 pl-3 text-note-foreground/60">
           {note.revisions.map((revision, index) => (
             <li key={index}>
               <span className="line-through">{revision.body}</span>
@@ -274,10 +262,10 @@ function CommentItem({
         </ol>
       )}
       {note.mine && !editing && (
-        <div className={cn("flex gap-3 text-muted-foreground")}>
+        <div className="flex gap-3 text-note-foreground/60 opacity-0 transition-opacity duration-state group-hover/comment:opacity-100 focus-within:opacity-100">
           <button
             type="button"
-            className="hover:text-foreground"
+            className="hover:text-note-foreground"
             onClick={() => {
               setText(note.body)
               setEditing(true)
@@ -287,7 +275,7 @@ function CommentItem({
           </button>
           <button
             type="button"
-            className="hover:text-destructive"
+            className="hover:text-note-foreground"
             onClick={async () => {
               if (await attempt(uncomment({ id: note.id }))) onChanged()
             }}
