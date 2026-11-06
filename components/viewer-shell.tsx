@@ -1,18 +1,12 @@
-import {
-  AppShell,
-  BuildVersion,
-  CornerLink,
-  CornerTip,
-} from "@/components/app-shell"
+import { AppShell } from "@/components/app-shell"
 import { LiveRefresh } from "@/components/live-refresh"
 import { UploadButton } from "@/components/upload-button"
-import { getSession } from "@/lib/auth/session"
 import { runningBuild } from "@/lib/build"
 
 // The viewer's corners: the lab and the page in the breadcrumb, Upload in the
-// top right (it opens over the page), the member's account next to the
-// build in the bottom left.
-export async function ViewerShell({
+// top right (it opens over the page), and the shell's default corners (the
+// build in the bottom left). No account corner: sign-in is Keycloak's.
+export function ViewerShell({
   page,
   layout,
   children,
@@ -21,7 +15,6 @@ export async function ViewerShell({
   layout?: "column" | "spotlight" | "wide"
   children: React.ReactNode
 }) {
-  const session = await getSession()
   return (
     <AppShell
       layout={layout}
@@ -31,20 +24,7 @@ export async function ViewerShell({
         ...(page ? [page] : []),
       ]}
       actions={<UploadButton />}
-      corners={{
-        bottomLeft: (
-          <>
-            {session && (
-              <CornerTip tip={session.user.email} corner="bottom-left">
-                <CornerLink href="/profile" prefetch>
-                  {session.user.name}
-                </CornerLink>
-              </CornerTip>
-            )}
-            <BuildVersion build={runningBuild()} />
-          </>
-        ),
-      }}
+      build={runningBuild()}
     >
       <LiveRefresh />
       {children}
