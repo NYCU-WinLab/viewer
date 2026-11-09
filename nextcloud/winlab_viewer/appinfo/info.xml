@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
+    <id>winlab_viewer</id>
+    <name>WinLab Viewer</name>
+    <summary>Open a PDF, Word or PowerPoint file in WinLab Viewer</summary>
+    <description>Adds "Open in Viewer" to the Files menu of PDF, Word and PowerPoint files. It opens viewer.winlab.tw, which imports the file from the member's own Nextcloud.</description>
+    <version>1.0.0</version>
+    <licence>agpl</licence>
+    <author>NYCU WinLab</author>
+    <namespace>WinlabViewer</namespace>
+    <category>files</category>
+    <dependencies>
+        <nextcloud min-version="33" max-version="36"/>
+    </dependencies>
+</info>

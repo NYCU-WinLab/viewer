@@ -25,10 +25,18 @@ export const documents = pgTable(
       .references(() => user.id, { onDelete: "cascade" }),
     /** The newest version's number; 0 until the first one is ready. */
     latestVersion: integer().notNull().default(0),
+    /** Where it came from in Nextcloud, when it was imported from there:
+     * the Nextcloud account and the file's path in it. Importing the same
+     * file again adds a version here instead of a new document. */
+    nextcloudUser: text(),
+    nextcloudPath: text(),
     createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
   },
-  (table) => [index().on(table.ownerId)]
+  (table) => [
+    index().on(table.ownerId),
+    index().on(table.nextcloudUser, table.nextcloudPath),
+  ]
 )
 
 export type DocumentKind = "pdf" | "docx" | "pptx"
@@ -45,6 +53,8 @@ export const documentVersions = pgTable(
     /** The file name as uploaded, extension included. */
     fileName: text().notNull(),
     size: integer().notNull(),
+    /** The Nextcloud file's ETag when this version was imported. */
+    nextcloudEtag: text(),
     uploadedBy: uuid().references(() => user.id, { onDelete: "set null" }),
     createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
   },
@@ -166,3 +176,20 @@ export const guestLinks = pgTable(
   },
   (table) => [index().on(table.documentId)]
 )
+
+// A member's Nextcloud connection (OAuth 2 against Nextcloud's oauth2 app),
+// to browse and import their own files. Both tokens are sealed with a key
+// derived from BETTER_AUTH_SECRET (lib/seal.ts); Nextcloud rotates the
+// refresh token on every use, so a refresh holds this row's lock.
+export const nextcloudTokens = pgTable("nextcloud_tokens", {
+  userId: uuid()
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  /** The member's Nextcloud user id, from the token response. */
+  nextcloudUser: text().notNull(),
+  accessToken: text().notNull(),
+  refreshToken: text().notNull(),
+  expiresAt: timestamp({ withTimezone: true }).notNull(),
+  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+})

@@ -24,6 +24,12 @@ import {
   revokeGuestLink,
 } from "@/lib/actions/guests"
 import { listMembers } from "@/lib/actions/members"
+import {
+  importNextcloudFile,
+  listNextcloudFiles,
+  nextcloudStatus,
+  unlinkNextcloud,
+} from "@/lib/actions/nextcloud"
 import { requireActor } from "@/lib/auth/session"
 
 // Every page's writes, one wrapper each. A failure comes back as { error }
@@ -62,3 +68,10 @@ export const resolve = async (input: unknown) => call(resolveAnnotation, input)
 export const comment = async (input: unknown) => call(addComment, input)
 export const reword = async (input: unknown) => call(editComment, input)
 export const uncomment = async (input: unknown) => call(deleteComment, input)
+
+export const loadNextcloudStatus = async () => call(nextcloudStatus, {})
+export const loadNextcloudFiles = async (input: unknown) =>
+  call(listNextcloudFiles, input)
+export const importFromNextcloud = async (input: unknown) =>
+  call(importNextcloudFile, input)
+export const unlinkFromNextcloud = async () => call(unlinkNextcloud, {})

@@ -56,26 +56,28 @@ viewer.winlab.tw deploys on every push to `main`. The release workflow retags th
 
 1. In your Keycloak realm, create a confidential OpenID Connect client with the redirect URI `<BETTER_AUTH_URL>/api/auth/callback/keycloak`, and put its ID and secret in `.env`. Give its service account `view-users`, so sharing can list lab members and `/mcp` can check that a member still exists.
 2. In Nextcloud, create an app password for the account that holds the files, create the folder `NEXTCLOUD_ROOT` in it, and put both in `.env`.
-3. Open `BETTER_AUTH_URL`, sign in and press Upload (上傳) in the top right.
-4. Add the MCP server to a client, for example `claude mcp add --transport http viewer <BETTER_AUTH_URL>/mcp`, then ask it to call `whoami`.
+3. Optional: to let members import from their own Nextcloud, create an OAuth 2 client there with the redirect URI `<BETTER_AUTH_URL>/nextcloud/callback` and put it in `.env`. To add "Open in Viewer" (在 Viewer 打開) to the Nextcloud file menu, build and install the app in [nextcloud/](nextcloud/) (`npm ci && npm run build`, then `./install.sh`).
+4. Open `BETTER_AUTH_URL`, sign in and press Upload (上傳) in the top right.
+5. Add the MCP server to a client, for example `claude mcp add --transport http viewer <BETTER_AUTH_URL>/mcp`, then ask it to call `whoami`.
 
 ## Configure
 
 Set these in `.env`; [.env.example](.env.example) documents every one.
 
-| Key | What it sets | Default |
-|-----|--------------|---------|
-| `POSTGRES_PASSWORD` | The database password, used by every service | required |
-| `BETTER_AUTH_URL` | The public URL; the MCP resource is `<url>/mcp` | required |
-| `BETTER_AUTH_SECRET` | Signs sessions and OAuth queries | required |
-| `KEYCLOAK_ISSUER` | The realm URL, e.g. `https://auth.example.com/realms/lab` | required |
-| `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET` | The viewer's Keycloak client | required |
-| `NEXTCLOUD_URL`, `NEXTCLOUD_USER`, `NEXTCLOUD_APP_PASSWORD` | Where the files live | required |
-| `NEXTCLOUD_ROOT` | The folder in that account the viewer owns | `viewer` |
-| `PORTAL_URL`, `PORTAL_SERVICE_KEY` | Where guest invitations are mailed from: a portal service key allowed to send invitations; no mail when empty | `https://portal.winlab.tw`, empty |
-| `VIEWER_VERSION` | Image tag | `main` |
-| `VIEWER_BIND`, `VIEWER_PORT` | Where web listens on the host | `127.0.0.1`, `3000` |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP/HTTP endpoint for traces and error logs; off when empty | empty |
+| Key                                                          | What it sets                                                                                                  | Default                           |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| `POSTGRES_PASSWORD`                                          | The database password, used by every service                                                                  | required                          |
+| `BETTER_AUTH_URL`                                            | The public URL; the MCP resource is `<url>/mcp`                                                               | required                          |
+| `BETTER_AUTH_SECRET`                                         | Signs sessions and OAuth queries                                                                              | required                          |
+| `KEYCLOAK_ISSUER`                                            | The realm URL, e.g. `https://auth.example.com/realms/lab`                                                     | required                          |
+| `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET`               | The viewer's Keycloak client                                                                                  | required                          |
+| `NEXTCLOUD_URL`, `NEXTCLOUD_USER`, `NEXTCLOUD_APP_PASSWORD`  | Where the files live                                                                                          | required                          |
+| `NEXTCLOUD_ROOT`                                             | The folder in that account the viewer owns                                                                    | `viewer`                          |
+| `NEXTCLOUD_OAUTH_CLIENT_ID`, `NEXTCLOUD_OAUTH_CLIENT_SECRET` | The Nextcloud OAuth 2 client members link their own account with; no Nextcloud import when empty              | empty                             |
+| `PORTAL_URL`, `PORTAL_SERVICE_KEY`                           | Where guest invitations are mailed from: a portal service key allowed to send invitations; no mail when empty | `https://portal.winlab.tw`, empty |
+| `VIEWER_VERSION`                                             | Image tag                                                                                                     | `main`                            |
+| `VIEWER_BIND`, `VIEWER_PORT`                                 | Where web listens on the host                                                                                 | `127.0.0.1`, `3000`               |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`                                | OTLP/HTTP endpoint for traces and error logs; off when empty                                                  | empty                             |
 
 ## How it works
 
@@ -91,7 +93,7 @@ flowchart LR
   member -->|"GET /files"| nc
 ```
 
-An upload streams to a temp file. A docx or pptx goes to the convert service (Gotenberg, LibreOffice inside) and comes back as PDF. Both files go to Nextcloud as `<root>/<document id>/v<n>.<ext>` and `v<n>.pdf`; only then is the version row written. The reader loads `/files/<id>/<n>` (access checked, streamed from Nextcloud) into pdf.js, which draws each page on a canvas with a selectable text layer. Marks are stored in page fractions, so they hold at any zoom. Only `lib/actions`, `lib/auth` and `lib/db` touch the database, and CI checks that every action is in the registry the MCP tools come from.
+An upload streams to a temp file. A docx or pptx goes to the convert service (Gotenberg, LibreOffice inside) and comes back as PDF. Both files go to Nextcloud as `<root>/<document id>/v<n>.<ext>` and `v<n>.pdf`; only then is the version row written. The reader loads `/files/<id>/<n>` (access checked, streamed from Nextcloud) into pdf.js, which draws each page on a canvas with a selectable text layer. Marks are stored in page fractions, so they hold at any zoom. A member can also import from their own Nextcloud: they link it once through OAuth 2 (`/nextcloud/connect`), the tokens are sealed in Postgres, and the Nextcloud tab of Upload lists their folders. An imported file remembers its path and etag, so importing it again opens the same document, with a new version only when the file changed. The Nextcloud app in `nextcloud/` opens `/import/nextcloud?path=<path>` from the file menu. Only `lib/actions`, `lib/auth` and `lib/db` touch the database, and CI checks that every action is in the registry the MCP tools come from.
 
 ## Develop
 
