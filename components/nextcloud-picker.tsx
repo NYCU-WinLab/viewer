@@ -137,7 +137,7 @@ export function NextcloudPicker({
           </React.Fragment>
         ))}
       </nav>
-      <ul className="flex h-80 flex-col overflow-y-auto">
+      <ul className="flex h-112 flex-col overflow-y-auto">
         {entries === null ? (
           <li className="py-12 text-center text-muted-foreground">載入中…</li>
         ) : entries.length === 0 ? (
