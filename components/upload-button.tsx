@@ -104,20 +104,31 @@ function ComputerUpload({
   )
 }
 
-// The Upload button in the top right: a new document, opened once it is stored.
-export function UploadButton() {
+// Upload: a new document, opened once it is stored. A link in the top
+// right corner by default; a button in a page header with variant="button".
+export function UploadButton({
+  variant = "corner",
+}: {
+  variant?: "corner" | "button"
+}) {
   const router = useRouter()
   const [open, setOpen] = React.useState(false)
   return (
     <>
-      <span aria-hidden className="hidden h-4 w-px bg-border md:block" />
-      <button
-        type="button"
-        className={cornerLinkClassName}
-        onClick={() => setOpen(true)}
-      >
-        上傳
-      </button>
+      {variant === "button" ? (
+        <Button onClick={() => setOpen(true)}>上傳</Button>
+      ) : (
+        <>
+          <span aria-hidden className="hidden h-4 w-px bg-border md:block" />
+          <button
+            type="button"
+            className={cornerLinkClassName}
+            onClick={() => setOpen(true)}
+          >
+            上傳
+          </button>
+        </>
+      )}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent size="wide">
           <DialogHeader>
