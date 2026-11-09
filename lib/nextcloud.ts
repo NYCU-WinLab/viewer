@@ -157,8 +157,16 @@ async function token(params: Record<string, string>): Promise<NextcloudToken> {
     }),
     signal: AbortSignal.timeout(15_000),
   })
-  if (response.status === 400 || response.status === 401)
-    throw new TokenRevoked(`Nextcloud token failed: ${response.status}`)
+  if (response.status === 400 || response.status === 401) {
+    // Nextcloud answers invalid_request (or invalid_grant) for a code or
+    // refresh token it does not know; invalid_client is the viewer's own
+    // configuration, which must not unlink anyone.
+    const answer = (await response.json().catch(() => null)) as {
+      error?: string
+    } | null
+    if (answer?.error !== "invalid_client")
+      throw new TokenRevoked(`Nextcloud token failed: ${response.status}`)
+  }
   if (!response.ok) fail("token", response)
   const body = (await response.json()) as {
     access_token?: string

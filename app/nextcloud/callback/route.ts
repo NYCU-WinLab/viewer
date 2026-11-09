@@ -17,7 +17,7 @@ export async function GET(request: Request) {
   const cookie = stateCookie()
   let saved: { state?: string; user?: string; next?: string } = {}
   try {
-    saved = JSON.parse(jar.get(cookie.name)?.value ?? "{}")
+    saved = JSON.parse(jar.get(cookie.name)?.value ?? "{}") ?? {}
   } catch {}
   // Cleared with the same flags it was set with: a __Host- cookie only
   // takes a Secure answer.

@@ -38,16 +38,30 @@ async function tokenOf(actor: Actor): Promise<NextcloudToken> {
       .where(eq(nextcloudTokens.userId, actor.userId))
       .for("update")
     if (!row) throw new Error("還沒連結 Nextcloud")
+    // Tokens sealed under an older BETTER_AUTH_SECRET cannot be opened:
+    // the member links again.
+    let saved: { access: string; refresh: string }
+    try {
+      saved = {
+        access: unseal(row.accessToken),
+        refresh: unseal(row.refreshToken),
+      }
+    } catch {
+      await tx
+        .delete(nextcloudTokens)
+        .where(eq(nextcloudTokens.userId, actor.userId))
+      return null
+    }
     if (row.expiresAt.getTime() > Date.now())
       return {
-        accessToken: unseal(row.accessToken),
-        refreshToken: unseal(row.refreshToken),
+        accessToken: saved.access,
+        refreshToken: saved.refresh,
         expiresAt: row.expiresAt,
         user: row.nextcloudUser,
       }
     let fresh: NextcloudToken
     try {
-      fresh = await refreshToken(unseal(row.refreshToken))
+      fresh = await refreshToken(saved.refresh)
     } catch (error) {
       if (!(error instanceof TokenRevoked))
         throw new Error("暫時連不上 Nextcloud，請稍後再試")
