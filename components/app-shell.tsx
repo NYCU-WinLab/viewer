@@ -28,7 +28,9 @@ import {
 // the label leaves out (where a link goes, what a page holds, whose account
 // it is); it never repeats the label.
 type Crumb = { label: string; href: string; tip: string }
-type NavItem = { label: string; href: string; tip: string }
+// current overrides the match on the path, for pages told apart by a query
+// (/?show=mine), which the shell cannot read without a Suspense boundary.
+type NavItem = { label: string; href: string; tip: string; current?: boolean }
 // Signed in, the account can open a menu instead of a page: the member's
 // name, then items such as 登出 (DropdownMenuItem children).
 type AccountMenu = { label: string; tip: string; menu: React.ReactNode }
@@ -200,10 +202,12 @@ function PageNav({
               // them when asked; then switching between them needs no
               // round trip.
               prefetch
-              aria-current={isCurrent(item.href) ? "page" : undefined}
+              aria-current={
+                (item.current ?? isCurrent(item.href)) ? "page" : undefined
+              }
               className={cn(
                 cornerLinkClassName,
-                isCurrent(item.href) && "text-foreground"
+                (item.current ?? isCurrent(item.href)) && "text-foreground"
               )}
             >
               {item.label}
@@ -224,11 +228,13 @@ function PageNav({
               <Link
                 key={item.href}
                 href={item.href}
-                aria-current={isCurrent(item.href) ? "page" : undefined}
+                aria-current={
+                  (item.current ?? isCurrent(item.href)) ? "page" : undefined
+                }
                 onClick={() => setOpen(false)}
                 className={cn(
                   "flex h-10 items-center rounded-control px-3 text-muted-foreground transition-colors duration-state outline-none hover:bg-muted hover:text-foreground focus-visible:bg-muted",
-                  isCurrent(item.href) && "text-foreground"
+                  (item.current ?? isCurrent(item.href)) && "text-foreground"
                 )}
               >
                 {item.label}

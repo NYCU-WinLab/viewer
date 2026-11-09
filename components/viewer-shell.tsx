@@ -8,11 +8,13 @@ import { UploadButton } from "@/components/upload-button"
 // account corner: sign-in is Keycloak's.
 export function ViewerShell({
   page,
+  nav,
   layout,
   actions = <UploadButton />,
   children,
 }: {
   page?: { label: string; href: string; tip: string }
+  nav?: { label: string; href: string; tip: string; current?: boolean }[]
   layout?: "column" | "spotlight" | "wide"
   actions?: React.ReactNode
   children: React.ReactNode
@@ -20,6 +22,7 @@ export function ViewerShell({
   return (
     <AppShell
       layout={layout}
+      nav={nav}
       breadcrumb={[
         { label: "WinLab", href: "https://portal.winlab.tw", tip: "" },
         { label: "Viewer", href: "/", tip: "" },

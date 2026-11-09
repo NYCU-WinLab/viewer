@@ -2,7 +2,6 @@ import Link from "next/link"
 import { redirect } from "next/navigation"
 
 import { EmptyState } from "@/components/empty-state"
-import { PageHeader } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
 import { ViewerShell } from "@/components/viewer-shell"
 import { runAction } from "@/lib/actions/define"
@@ -46,36 +45,29 @@ export default async function Home({ searchParams }: PageProps<"/">) {
         : true
   )
   const filters = [
-    { label: "全部", href: "/", on: !show },
-    { label: "我的", href: "/?show=mine", on: show === "mine" },
-    { label: "共用給我", href: "/?show=shared", on: show === "shared" },
+    { label: "全部", href: "/", tip: "", current: !show },
+    { label: "我的", href: "/?show=mine", tip: "", current: show === "mine" },
+    {
+      label: "共用給我",
+      href: "/?show=shared",
+      tip: "",
+      current: show === "shared",
+    },
   ]
   return (
-    <ViewerShell layout="wide">
-      <div className="flex flex-col gap-8">
-        <PageHeader title="文件" />
-        <nav aria-label="篩選" className="flex gap-6">
-          {filters.map((filter) => (
-            <Link
-              key={filter.href}
-              href={filter.href}
-              aria-current={filter.on ? "page" : undefined}
-              className="text-muted-foreground hover:text-foreground aria-[current=page]:text-primary"
-            >
-              {filter.label}
-            </Link>
-          ))}
-        </nav>
+    <ViewerShell layout="wide" nav={filters}>
+      <div className="mx-auto w-full max-w-6xl">
+        <h1 className="sr-only">文件</h1>
         {documents.length === 0 ? (
           <EmptyState noun="文件" />
         ) : (
-          <ul className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {documents.map((doc) => (
               <li key={doc.id}>
                 <Link
                   href={`/d/${doc.id}`}
                   prefetch
-                  className="group flex flex-col gap-3"
+                  className="flex flex-col gap-3 rounded-menu p-3 transition-colors duration-state outline-none hover:bg-muted focus-visible:bg-muted"
                 >
                   <div className="relative aspect-4/3 overflow-hidden rounded-menu bg-muted">
                     {/* eslint-disable-next-line @next/next/no-img-element -- a member-only route, not an optimizable asset */}
@@ -92,7 +84,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
                     )}
                   </div>
                   <div className="flex flex-col gap-1">
-                    <span className="truncate font-medium group-hover:text-primary">
+                    <span className="truncate font-medium">
                       {doc.name}
                       {doc.latestVersion > 1 && (
                         <span className="ml-2 font-normal text-muted-foreground">
