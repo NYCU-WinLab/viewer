@@ -1,8 +1,13 @@
 import { and, desc, eq, isNotNull, isNull, sql } from "drizzle-orm"
 import { z } from "zod"
 
-import { accessTo, requireAccess } from "@/lib/actions/access"
-import { type Actor, defineAction } from "@/lib/actions/define"
+import { requireAccess } from "@/lib/actions/access"
+import { defineAction } from "@/lib/actions/define"
+import {
+  accessFromNextcloud,
+  rememberAccess,
+} from "@/lib/actions/nextcloud-access"
+import { tokenOf } from "@/lib/actions/nextcloud-token"
 import {
   MAX_DOCUMENT_BYTES,
   storeVersion,
@@ -10,9 +15,9 @@ import {
 } from "@/lib/actions/documents"
 import { db } from "@/lib/db"
 import {
-  documentGrants,
   documents,
   documentVersions,
+  nextcloudAccess,
   nextcloudTokens,
 } from "@/lib/db/schema"
 import {
@@ -21,11 +26,9 @@ import {
   exchangeCode,
   listMemberFolder,
   memberFileInfo,
-  type NextcloudToken,
-  refreshToken,
   TokenRevoked,
 } from "@/lib/nextcloud"
-import { seal, unseal } from "@/lib/seal"
+import { seal } from "@/lib/seal"
 
 // A member's own Nextcloud files: link the account once (OAuth 2 through
 // /nextcloud/connect), then browse folders and import a PDF, Word or
@@ -35,65 +38,6 @@ import { seal, unseal } from "@/lib/seal"
 const KINDS = /\.(pdf|docx|pptx)$/i
 const path = z.string().min(1).max(2000).startsWith("/")
 const id = z.uuid().transform((value) => value.toLowerCase())
-
-/** The member's token, refreshed when it has expired. Nextcloud rotates
- * the refresh token on each use, so the row stays locked meanwhile. A
- * refresh Nextcloud refuses unlinks the member (the delete commits before
- * the error); a timeout or server error keeps the link for the next try. */
-async function tokenOf(actor: Actor): Promise<NextcloudToken> {
-  const result = await db.transaction(async (tx) => {
-    const [row] = await tx
-      .select()
-      .from(nextcloudTokens)
-      .where(eq(nextcloudTokens.userId, actor.userId))
-      .for("update")
-    if (!row) throw new Error("還沒連結 Nextcloud")
-    // Tokens sealed under an older BETTER_AUTH_SECRET cannot be opened:
-    // the member links again.
-    let saved: { access: string; refresh: string }
-    try {
-      saved = {
-        access: unseal(row.accessToken),
-        refresh: unseal(row.refreshToken),
-      }
-    } catch {
-      await tx
-        .delete(nextcloudTokens)
-        .where(eq(nextcloudTokens.userId, actor.userId))
-      return null
-    }
-    if (row.expiresAt.getTime() > Date.now())
-      return {
-        accessToken: saved.access,
-        refreshToken: saved.refresh,
-        expiresAt: row.expiresAt,
-        user: row.nextcloudUser,
-      }
-    let fresh: NextcloudToken
-    try {
-      fresh = await refreshToken(saved.refresh)
-    } catch (error) {
-      if (!(error instanceof TokenRevoked))
-        throw new Error("暫時連不上 Nextcloud，請稍後再試")
-      await tx
-        .delete(nextcloudTokens)
-        .where(eq(nextcloudTokens.userId, actor.userId))
-      return null
-    }
-    await tx
-      .update(nextcloudTokens)
-      .set({
-        accessToken: seal(fresh.accessToken),
-        refreshToken: seal(fresh.refreshToken),
-        expiresAt: fresh.expiresAt,
-        updatedAt: new Date(),
-      })
-      .where(eq(nextcloudTokens.userId, actor.userId))
-    return fresh
-  })
-  if (!result) throw new Error("Nextcloud 連結已失效，請重新連結")
-  return result
-}
 
 export const nextcloudStatus = defineAction({
   name: "nextcloud_status",
@@ -137,10 +81,17 @@ export const linkNextcloud = defineAction({
       expiresAt: token.expiresAt,
       updatedAt: new Date(),
     }
-    await db
-      .insert(nextcloudTokens)
-      .values({ userId: actor.userId, ...values })
-      .onConflictDoUpdate({ target: nextcloudTokens.userId, set: values })
+    // Another Nextcloud account may see other files: forget what the old
+    // link was allowed.
+    await db.transaction(async (tx) => {
+      await tx
+        .insert(nextcloudTokens)
+        .values({ userId: actor.userId, ...values })
+        .onConflictDoUpdate({ target: nextcloudTokens.userId, set: values })
+      await tx
+        .delete(nextcloudAccess)
+        .where(eq(nextcloudAccess.userId, actor.userId))
+    })
     return { user: token.user }
   },
 })
@@ -149,13 +100,18 @@ export const unlinkNextcloud = defineAction({
   name: "unlink_nextcloud",
   title: "解除 Nextcloud 連結",
   description:
-    "Forgets the member's Nextcloud tokens. Documents already imported stay.",
+    "Forgets the member's Nextcloud tokens. Documents already imported stay, but the member loses the documents they could open through Nextcloud until they link again.",
   kind: "mutation",
   input: z.object({}),
   run: async (actor) => {
-    await db
-      .delete(nextcloudTokens)
-      .where(eq(nextcloudTokens.userId, actor.userId))
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(nextcloudTokens)
+        .where(eq(nextcloudTokens.userId, actor.userId))
+      await tx
+        .delete(nextcloudAccess)
+        .where(eq(nextcloudAccess.userId, actor.userId))
+    })
     return { unlinked: true }
   },
 })
@@ -178,7 +134,7 @@ export const importNextcloudFile = defineAction({
   name: "import_nextcloud_file",
   title: "從 Nextcloud 匯入",
   description:
-    "Opens a PDF, Word or PowerPoint file from the member's Nextcloud by path as a document. A file is bound to one document by its Nextcloud file id, so a rename, a move or another member opening the same shared file finds that document; a member who can read the file there and cannot see the document yet gets comment access to it. When the file changed since its last import, its new content becomes the next version first. With documentId the file becomes the next version of that document instead (needs edit access). Returns the document id, its version and unchanged when nothing new was stored.",
+    "Opens a PDF, Word or PowerPoint file from the member's Nextcloud by path as a document. A file is bound to one document by its Nextcloud file id, so a rename, a move or another member opening the same shared file finds that document. Such a document is shared in Nextcloud only: reading the file there gives comment access, writing it edit, owning it owner. When the file changed since its last import, its new content becomes the next version first. With documentId the file becomes the next version of that document instead (needs edit access). Returns the document id, its version and unchanged when nothing new was stored.",
   kind: "mutation",
   input: z.object({ path, documentId: id.optional() }),
   run: async (actor, input) => {
@@ -189,6 +145,11 @@ export const importNextcloudFile = defineAction({
     const token = await tokenOf(actor)
     const info = await memberFileInfo(token, input.path)
     if (info.size > MAX_DOCUMENT_BYTES) throw new Error("檔案太大")
+    // Nextcloud just showed the file to this member: their access to its
+    // document is what they may do with it there, from now on.
+    await rememberAccess(actor, token.user, [
+      { fileId: info.fileId, access: accessFromNextcloud(token.user, info) },
+    ])
     const source = {
       user: token.user,
       path: input.path,
@@ -262,12 +223,6 @@ export const importNextcloudFile = defineAction({
           .update(documents)
           .set({ nextcloudFileId: info.fileId })
           .where(eq(documents.id, doc.id))
-      // Reading the file in Nextcloud is the right to read it here.
-      if (!(await accessTo(actor, doc.id)))
-        await tx
-          .insert(documentGrants)
-          .values({ documentId: doc.id, userId: actor.userId, role: "comment" })
-          .onConflictDoNothing()
       // The newest version that came from Nextcloud tells whether the file
       // changed; a version uploaded by hand in between does not count.
       const [latest] = await tx

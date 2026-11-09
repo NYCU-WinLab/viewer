@@ -1,10 +1,11 @@
 import { readFile, rm } from "node:fs/promises"
 
-import { and, desc, eq, inArray, or, sql } from "drizzle-orm"
+import { and, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm"
 import { z } from "zod"
 
-import { accessTo, requireAccess } from "@/lib/actions/access"
+import { accessTo, atLeast, requireAccess } from "@/lib/actions/access"
 import { memberUserId } from "@/lib/actions/members"
+import { nextcloudAccessTo } from "@/lib/actions/nextcloud-access"
 import { type Actor, defineAction } from "@/lib/actions/define"
 import { toPdf } from "@/lib/convert"
 import { db, type Db } from "@/lib/db"
@@ -16,7 +17,11 @@ import {
   type DocumentKind,
   user,
 } from "@/lib/db/schema"
-import { deleteDocumentFiles, putDocumentFiles } from "@/lib/nextcloud"
+import {
+  deleteDocumentFiles,
+  nextcloudFileUrl,
+  putDocumentFiles,
+} from "@/lib/nextcloud"
 
 /** A transaction, as drizzle hands it to db.transaction's callback. */
 export type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0]
@@ -52,20 +57,22 @@ export const listDocuments = defineAction({
   name: "list_documents",
   title: "文件清單",
   description:
-    "Documents the member can open: their own and those shared with them, newest change first. Each has id, name, owner name, the member's access (owner, edit, comment or view), the latest version number and file kind (pdf, docx, pptx), and how many marks are still open.",
+    "Documents the member can open: their own, those shared with them, and those bound to a Nextcloud file they can read there, newest change first. Each has id, name, owner name, the member's access (owner, edit, comment or view), the latest version number and file kind (pdf, docx, pptx), and how many marks are still open.",
   kind: "query",
   input: z.object({}),
   run: async (actor) => {
-    const rows = await db
-      .select({
-        id: documents.id,
-        name: documents.name,
-        ownerId: documents.ownerId,
-        ownerName: user.name,
-        role: documentGrants.role,
-        latestVersion: documents.latestVersion,
-        updatedAt: documents.updatedAt,
-      })
+    const fields = {
+      id: documents.id,
+      name: documents.name,
+      ownerId: documents.ownerId,
+      ownerName: user.name,
+      fileId: documents.nextcloudFileId,
+      role: documentGrants.role,
+      latestVersion: documents.latestVersion,
+      updatedAt: documents.updatedAt,
+    }
+    const own = db
+      .select(fields)
       .from(documents)
       .innerJoin(user, eq(user.id, documents.ownerId))
       .leftJoin(
@@ -78,13 +85,47 @@ export const listDocuments = defineAction({
       .where(
         and(
           sql`${documents.latestVersion} > 0`,
+          isNull(documents.nextcloudFileId),
           or(
             eq(documents.ownerId, actor.userId),
             eq(documentGrants.userId, actor.userId)
           )
         )
       )
-      .orderBy(desc(documents.updatedAt))
+    // Documents bound to Nextcloud files: the ones whose file Nextcloud
+    // lets this member read, asked in one request.
+    const bound = db
+      .select(fields)
+      .from(documents)
+      .innerJoin(user, eq(user.id, documents.ownerId))
+      .leftJoin(
+        documentGrants,
+        and(
+          eq(documentGrants.documentId, documents.id),
+          eq(documentGrants.userId, actor.userId)
+        )
+      )
+      .where(
+        and(
+          sql`${documents.latestVersion} > 0`,
+          isNotNull(documents.nextcloudFileId)
+        )
+      )
+    const [unbound, candidates] = await Promise.all([own, bound])
+    const { access: fromNextcloud } = await nextcloudAccessTo(
+      actor,
+      candidates.map((row) => row.fileId!)
+    )
+    const rows = [
+      ...unbound.map((row) => ({
+        ...row,
+        access: row.ownerId === actor.userId ? ("owner" as const) : row.role!,
+      })),
+      ...candidates.flatMap((row) => {
+        const access = fromNextcloud.get(row.fileId!)
+        return access ? [{ ...row, access }] : []
+      }),
+    ].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
     if (rows.length === 0) return []
     const ids = rows.map((row) => row.id)
     const [kinds, open] = await Promise.all([
@@ -115,7 +156,8 @@ export const listDocuments = defineAction({
       id: row.id,
       name: row.name,
       ownerName: row.ownerName,
-      access: row.ownerId === actor.userId ? ("owner" as const) : row.role!,
+      access: row.access,
+      shared: row.fileId ? ("nextcloud" as const) : ("viewer" as const),
       latestVersion: row.latestVersion,
       kind:
         kinds.find(
@@ -145,6 +187,7 @@ export const getDocument = defineAction({
         ownerId: documents.ownerId,
         ownerName: user.name,
         latestVersion: documents.latestVersion,
+        fileId: documents.nextcloudFileId,
       })
       .from(documents)
       .innerJoin(user, eq(user.id, documents.ownerId))
@@ -163,9 +206,13 @@ export const getDocument = defineAction({
       .leftJoin(user, eq(user.id, documentVersions.uploadedBy))
       .where(eq(documentVersions.documentId, id))
       .orderBy(documentVersions.number)
+    const { fileId, ...rest } = doc
     return {
-      ...doc,
+      ...rest,
       access,
+      // Where sharing is managed: in Nextcloud for a bound document.
+      nextcloudShareUrl:
+        fileId && atLeast(access, "edit") ? nextcloudFileUrl(fileId) : null,
       versions: versions.map((v) => ({
         ...v,
         createdAt: v.createdAt.toISOString(),
@@ -324,6 +371,16 @@ export const deleteDocument = defineAction({
   },
 })
 
+/** A document bound to a Nextcloud file is shared in Nextcloud only. */
+async function refuseBound(id: string) {
+  const [doc] = await db
+    .select({ fileId: documents.nextcloudFileId })
+    .from(documents)
+    .where(eq(documents.id, id))
+  if (doc?.fileId)
+    throw new Error("這份文件跟著 Nextcloud 的分享，請到 Nextcloud 分享")
+}
+
 export const listShares = defineAction({
   name: "list_document_shares",
   title: "文件共用名單",
@@ -333,6 +390,7 @@ export const listShares = defineAction({
   input: z.object({ id }),
   run: async (actor, { id }) => {
     await requireAccess(actor, id, "edit")
+    await refuseBound(id)
     return db
       .select({
         userId: documentGrants.userId,
@@ -353,11 +411,12 @@ export const shareDocument = defineAction({
   name: "share_document",
   title: "共用文件",
   description:
-    "Shares a document with a lab member (id from list_members) as view, comment or edit, or changes their role. Needs edit access; only the owner can hand out edit or change an editor's role.",
+    "Shares a document with a lab member (id from list_members) as view, comment or edit, or changes their role. Needs edit access; only the owner can hand out edit or change an editor's role. Refused for a document bound to a Nextcloud file: share the file in Nextcloud instead.",
   kind: "mutation",
   input: z.object({ id, memberId: z.string().min(1), role }),
   run: async (actor, input) => {
     const access = await requireAccess(actor, input.id, "edit")
+    await refuseBound(input.id)
     if (input.role === "edit" && access !== "owner")
       throw new Error("只有擁有者可以給編輯權限")
     const userId = await memberUserId(input.memberId)
@@ -409,6 +468,7 @@ export const unshareDocument = defineAction({
   }),
   run: async (actor, input) => {
     const access = await requireAccess(actor, input.id, "edit")
+    await refuseBound(input.id)
     const where = and(
       eq(documentGrants.documentId, input.id),
       eq(documentGrants.userId, input.userId)

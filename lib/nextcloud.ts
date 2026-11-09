@@ -236,7 +236,7 @@ const unescapeXml = (text: string) =>
     .replace(/&apos;/g, "'")
     .replace(/&amp;/g, "&")
 
-const PROPS = `<?xml version="1.0"?><d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:prop><d:resourcetype/><d:getcontentlength/><d:getlastmodified/><d:getcontenttype/><d:getetag/><oc:fileid/></d:prop></d:propfind>`
+const PROPS = `<?xml version="1.0"?><d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:prop><d:resourcetype/><d:getcontentlength/><d:getlastmodified/><d:getcontenttype/><d:getetag/><oc:fileid/><oc:permissions/><oc:owner-id/></d:prop></d:propfind>`
 
 /** One file of the member's: its Nextcloud id and ETag, without the
  * content, to tell whether it changed since the last import. */
@@ -262,7 +262,71 @@ export async function memberFileInfo(token: NextcloudToken, path: string) {
     fileId,
     etag: unescapeXml(tag(xml, "getetag")).replace(/"/g, ""),
     size: Number(tag(xml, "getcontentlength")) || 0,
+    permissions: tag(xml, "permissions"),
+    ownerId: unescapeXml(tag(xml, "owner-id")),
   }
+}
+
+/** What the member may do with each of these files in Nextcloud, by file
+ * id: its permission letters (G read, W write, M on a mounted team folder)
+ * and its owner. A file the member cannot reach is missing from the map.
+ * One SEARCH covers the member's own files, shares and team folders. */
+export async function memberFileAccess(
+  token: NextcloudToken,
+  fileIds: string[]
+) {
+  const found = new Map<string, { permissions: string; ownerId: string }>()
+  const ids = [...new Set(fileIds)].filter((id) => /^\d+$/.test(id))
+  const { base } = oauth()
+  const scope = `/files/${encodeURIComponent(token.user)}`
+  for (let start = 0; start < ids.length; start += 200) {
+    const terms = ids
+      .slice(start, start + 200)
+      .map(
+        (id) =>
+          `<d:eq><d:prop><oc:fileid/></d:prop><d:literal>${id}</d:literal></d:eq>`
+      )
+      .join("")
+    const response = await fetch(`${base}/remote.php/dav/`, {
+      method: "SEARCH",
+      headers: {
+        authorization: `Bearer ${token.accessToken}`,
+        "content-type": "text/xml",
+      },
+      body: `<?xml version="1.0"?><d:searchrequest xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:basicsearch><d:select><d:prop><oc:fileid/><oc:permissions/><oc:owner-id/></d:prop></d:select><d:from><d:scope><d:href>${scope}</d:href><d:depth>infinity</d:depth></d:scope></d:from><d:where><d:or>${terms}<d:eq><d:prop><oc:fileid/></d:prop><d:literal>0</d:literal></d:eq></d:or></d:where><d:orderby/></d:basicsearch></d:searchrequest>`,
+      signal: AbortSignal.timeout(15_000),
+    })
+    if (response.status === 401) throw new TokenRevoked("SEARCH")
+    if (response.status !== 207) fail("SEARCH", response)
+    const xml = await response.text()
+    for (const part of xml.split(/<\/(?:\w+:)?response>/)) {
+      const fileId = tag(part, "fileid")
+      if (!fileId) continue
+      const file = {
+        permissions: tag(part, "permissions"),
+        ownerId: unescapeXml(tag(part, "owner-id")),
+      }
+      // One file reached two ways (a team folder and a share) comes back
+      // twice: the member has every permission either gives, and it is
+      // mounted only when both are.
+      const seen = found.get(fileId)
+      if (seen) {
+        const letters = new Set(seen.permissions + file.permissions)
+        if (!seen.permissions.includes("M") || !file.permissions.includes("M"))
+          letters.delete("M")
+        file.permissions = [...letters].join("")
+      }
+      found.set(fileId, file)
+    }
+  }
+  return found
+}
+
+/** Where a member manages a file's sharing in Nextcloud. */
+export function nextcloudFileUrl(fileId: string) {
+  const url = process.env.NEXTCLOUD_URL
+  if (!url || !/^\d+$/.test(fileId)) return null
+  return `${url.replace(/\/$/, "")}/f/${fileId}`
 }
 
 /** One folder of the member's files: folders first, then files, by name. */
