@@ -130,6 +130,7 @@ export const getDocument = defineAction({
   description:
     "One document: name, owner, the member's access, and every version (number, kind, file name, size, who uploaded it, when), newest last. Returns null when it does not exist or the member may not open it.",
   kind: "query",
+  guests: true,
   input: z.object({ id }),
   run: async (actor, { id }) => {
     const access = await accessTo(actor, id)
@@ -393,6 +394,7 @@ export const getDocumentPdf = defineAction({
   title: "文件 PDF",
   description: "Which stored PDF to stream for one version of a document.",
   kind: "query",
+  guests: true,
   mcpExcludedBecause:
     "it names a file in storage for the /files route; agents read marks and comments instead",
   input: z.object({ id, version: z.number().int().positive() }),

@@ -1,6 +1,9 @@
+import { eq } from "drizzle-orm"
 import { z } from "zod"
 
 import { announceChange } from "@/lib/actions/changes"
+import { db } from "@/lib/db"
+import { user } from "@/lib/db/schema"
 import { traced } from "@/lib/otel"
 
 /**
@@ -32,6 +35,9 @@ export type Action<
   run: (actor: Actor, input: z.infer<Input>) => Promise<Output>
   /** Set only to keep it off MCP, with the reason. */
   mcpExcludedBecause?: string
+  /** Guests (people in through a guest link) may run it too. Without it,
+   * runAction refuses a guest before the action runs. */
+  guests?: true
 }
 
 /** Names of every action created, for the registry check. */
@@ -55,6 +61,8 @@ export async function runAction<Input extends z.ZodObject, Output>(
     `action ${action.name}`,
     { "action.name": action.name, "action.kind": action.kind, via: actor.via },
     async () => {
+      if (!action.guests && (await isGuest(actor.userId)))
+        throw new Error("訪客不能這樣做")
       const result = await action.run(actor, action.input.parse(input))
       // Open pages refresh on this; a failed announcement never fails the
       // change itself.
@@ -63,6 +71,16 @@ export async function runAction<Input extends z.ZodObject, Output>(
       return result
     }
   )
+}
+
+/** Whether the user came in through a guest link. */
+async function isGuest(userId: string) {
+  if (!userId) return false
+  const [row] = await db
+    .select({ guestLinkId: user.guestLinkId })
+    .from(user)
+    .where(eq(user.id, userId))
+  return Boolean(row?.guestLinkId)
 }
 
 /** What to tell a member when an action fails: the first input problem, or

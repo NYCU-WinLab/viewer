@@ -141,3 +141,28 @@ export const commentRevisions = pgTable(
   },
   (table) => [index().on(table.commentId)]
 )
+
+export type GuestRole = "view" | "comment"
+
+// A link that lets someone without a lab account into one document for a
+// while, as view or comment, never more. The link carries a random secret;
+// only its hash is kept here. Each person who comes in through it becomes a
+// guest user (users.guest_link_id), named as they typed.
+export const guestLinks = pgTable(
+  "guest_links",
+  {
+    id: uuid().defaultRandom().primaryKey(),
+    documentId: uuid()
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    secretHash: text().notNull().unique(),
+    role: text().$type<GuestRole>().notNull(),
+    /** Who the link is for, as its maker wrote it. */
+    label: text().notNull().default(""),
+    createdBy: uuid().references(() => user.id, { onDelete: "set null" }),
+    expiresAt: timestamp({ withTimezone: true }).notNull(),
+    revokedAt: timestamp({ withTimezone: true }),
+    createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [index().on(table.documentId)]
+)

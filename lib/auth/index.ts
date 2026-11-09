@@ -42,6 +42,8 @@ export const auth = betterAuth({
       // Keycloak preferred_username: the lab account name, e.g. "zyx1121".
       // Not input: false, which also drops it from the mapped profile.
       username: { type: "string", required: false },
+      // A guest's link; never set from input (see lib/auth/guest.ts).
+      guestLinkId: { type: "string", required: false, input: false },
     },
   },
   session: { cookieCache: { enabled: true, maxAge: 5 * 60 } },

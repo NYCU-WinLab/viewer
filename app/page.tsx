@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { redirect } from "next/navigation"
 
 import { EmptyState } from "@/components/empty-state"
 import { PageHeader } from "@/components/page-header"
@@ -13,6 +14,7 @@ import {
 import { ViewerShell } from "@/components/viewer-shell"
 import { runAction } from "@/lib/actions/define"
 import { listDocuments } from "@/lib/actions/documents"
+import { whoami } from "@/lib/actions/users"
 import { requireActor } from "@/lib/auth/session"
 
 export const dynamic = "force-dynamic"
@@ -39,6 +41,9 @@ const when = new Intl.DateTimeFormat("zh-TW", {
 export default async function Home({ searchParams }: PageProps<"/">) {
   const { show } = (await searchParams) as { show?: string }
   const actor = await requireActor("/")
+  // A guest has one document and no list.
+  const me = await runAction(whoami, actor, {})
+  if (me.guestDocumentId) redirect(`/d/${me.guestDocumentId}`)
   const all = await runAction(listDocuments, actor, {})
   const documents = all.filter((doc) =>
     show === "mine"

@@ -1,5 +1,6 @@
 import { z } from "zod"
 
+import { onChange } from "@/lib/actions/changes"
 import { runAction } from "@/lib/actions/define"
 import { getDocument } from "@/lib/actions/documents"
 import { getSession } from "@/lib/auth/session"
@@ -16,19 +17,20 @@ export async function GET(
   const session = await getSession()
   if (!session) return new Response(null, { status: 401 })
   const parsed = z.uuid().safeParse(id)
-  const doc = parsed.success
-    ? await runAction(
-        getDocument,
-        { userId: session.user.id, via: "web" },
-        { id: parsed.data.toLowerCase() }
-      )
-    : null
+  const actor = { userId: session.user.id, via: "web" as const }
+  const allowed = async () =>
+    parsed.success
+      ? runAction(getDocument, actor, { id: parsed.data.toLowerCase() }).catch(
+          () => null
+        )
+      : null
+  const doc = await allowed()
   if (!doc) return new Response(null, { status: 404 })
 
   const encoder = new TextEncoder()
   let stop = () => {}
   const stream = new ReadableStream({
-    start(controller) {
+    async start(controller) {
       const send = (event: PresenceEvent | { type: "hello"; conn: string }) => {
         try {
           controller.enqueue(
@@ -62,16 +64,34 @@ export async function GET(
           stop()
         }
       }, 25_000)
-      stop = () => {
-        clearInterval(ping)
-        room.leave()
-      }
-      request.signal.addEventListener("abort", () => {
+      // Access can end while the stream is open (a share removed, a guest
+      // link revoked or run out): look again on every change that could
+      // end it and every 30 seconds, and close the stream when it has.
+      const close = () => {
         stop()
         try {
           controller.close()
         } catch {}
-      })
+      }
+      const recheck = async () => {
+        if (!(await allowed())) close()
+      }
+      const offChange = await onChange((action) => {
+        if (
+          action === "revoke_guest_link" ||
+          action === "unshare_document" ||
+          action === "delete_document"
+        )
+          recheck()
+      }).catch(() => () => {})
+      const watch = setInterval(recheck, 30_000)
+      stop = () => {
+        clearInterval(ping)
+        clearInterval(watch)
+        offChange()
+        room.leave()
+      }
+      request.signal.addEventListener("abort", close)
     },
     cancel() {
       stop()

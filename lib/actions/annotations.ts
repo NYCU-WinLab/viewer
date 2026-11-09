@@ -52,6 +52,7 @@ export const listAnnotations = defineAction({
   description:
     "Every mark on one version of a document, in page order: id, tool (highlight, box, pen), page, geometry in page fractions, the quoted text if any, author, whether and by whom it was resolved, and its sticky note thread (each comment with author, body, times, and earlier wordings when edited).",
   kind: "query",
+  guests: true,
   input: z.object({ id: uuid, version: z.number().int().positive() }),
   run: async (actor, { id, version }) => {
     await requireAccess(actor, id, "view")
@@ -143,6 +144,7 @@ export const addAnnotation = defineAction({
   description:
     "Marks one page of a document version: highlight (rects over text, with its quote), box (one rect) or pen (a stroke of points). Coordinates are page fractions from the top left. An optional first comment starts its sticky note. Needs comment access.",
   kind: "mutation",
+  guests: true,
   input: z.object({
     id: uuid,
     version: z.number().int().positive(),
@@ -200,6 +202,7 @@ export const deleteAnnotation = defineAction({
   description:
     "Deletes a mark and its sticky note. Its author can, and anyone with edit access.",
   kind: "mutation",
+  guests: true,
   input: z.object({ id: uuid }),
   run: async (actor, { id }) => {
     const documentId = await documentOf(id)
@@ -221,6 +224,7 @@ export const resolveAnnotation = defineAction({
   description:
     "Marks a mark as handled (resolved: true) or opens it again (false). Needs comment access.",
   kind: "mutation",
+  guests: true,
   input: z.object({ id: uuid, resolved: z.boolean() }),
   run: async (actor, { id, resolved }) => {
     await requireAccess(actor, await documentOf(id), "comment")
@@ -241,6 +245,7 @@ export const addComment = defineAction({
   title: "留言",
   description: "Adds a comment to a mark's sticky note. Needs comment access.",
   kind: "mutation",
+  guests: true,
   input: z.object({ annotationId: uuid, body }),
   run: async (actor, input) => {
     await requireAccess(actor, await documentOf(input.annotationId), "comment")
@@ -276,6 +281,7 @@ export const editComment = defineAction({
   description:
     "Rewrites the member's own comment; the earlier wording is kept and shown as its history.",
   kind: "mutation",
+  guests: true,
   input: z.object({ id: uuid, body }),
   run: async (actor, input) => {
     const note = await ownComment(actor, input.id)
@@ -299,6 +305,7 @@ export const deleteComment = defineAction({
   description:
     "Deletes one of the member's own comments from a sticky note, with its earlier wordings. Other members' comments cannot be deleted.",
   kind: "mutation",
+  guests: true,
   input: z.object({ id: uuid }),
   run: async (actor, { id }) => {
     await ownComment(actor, id)

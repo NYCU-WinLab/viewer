@@ -19,6 +19,13 @@ import {
   unshareDocument,
   uploadDocument,
 } from "@/lib/actions/documents"
+import {
+  createGuestLink,
+  guestLinkInfo,
+  joinAsGuest,
+  listGuestLinks,
+  revokeGuestLink,
+} from "@/lib/actions/guests"
 import { listMembers } from "@/lib/actions/members"
 import { whoami } from "@/lib/actions/users"
 
@@ -42,4 +49,9 @@ export const actions: Action[] = [
   editComment,
   deleteComment,
   listMembers,
+  createGuestLink,
+  listGuestLinks,
+  revokeGuestLink,
+  guestLinkInfo,
+  joinAsGuest,
 ]
