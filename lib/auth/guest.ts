@@ -3,7 +3,6 @@ import { createHmac, randomBytes } from "node:crypto"
 import { and, count, eq, gt, isNull, sql } from "drizzle-orm"
 import { cookies } from "next/headers"
 
-import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { guestLinks, session, user } from "@/lib/db/schema"
 
@@ -46,6 +45,9 @@ export async function signInGuest(guest: {
       updatedAt: new Date(),
     })
   })
+  // Loaded here, not at the top: lib/auth reads its environment on import,
+  // and the action registry (checked in CI without one) imports this file.
+  const { auth } = await import("@/lib/auth")
   const context = await auth.$context
   // The same signature Better Auth checks: HMAC-SHA256, base64.
   const sign = (value: string) =>
