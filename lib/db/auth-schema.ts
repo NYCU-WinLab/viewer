@@ -30,6 +30,9 @@ export const user = pgTable(
       .defaultNow()
       .notNull(),
     username: text(),
+    /** Set for a guest: the guest link they came in through (guest_links.id).
+     * A guest has no Keycloak account and sees only that link's document. */
+    guestLinkId: uuid(),
   },
   (table) => [unique().on(table.email)]
 )

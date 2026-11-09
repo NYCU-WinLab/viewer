@@ -6,11 +6,20 @@ import { useRouter } from "next/navigation"
 import * as React from "react"
 import { toast } from "sonner"
 
-import { loadMembers, loadShares, share, unshare } from "@/app/actions"
+import {
+  inviteGuest,
+  loadGuestLinks,
+  loadMembers,
+  loadShares,
+  share,
+  uninviteGuest,
+  unshare,
+} from "@/app/actions"
 import { MemberCombobox } from "@/components/member-combobox"
 import { formatWhen } from "@/components/reader/sticky-note"
 import { UploadForm } from "@/components/upload-button"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import {
   Dialog,
   DialogContent,
@@ -137,7 +146,10 @@ export function DocumentActions({
             <DialogTitle>共用</DialogTitle>
           </DialogHeader>
           {dialog === "share" && (
-            <SharePanel documentId={documentId} isOwner={isOwner} />
+            <>
+              <SharePanel documentId={documentId} isOwner={isOwner} />
+              <GuestPanel documentId={documentId} />
+            </>
           )}
         </DialogContent>
       </Dialog>
@@ -269,5 +281,130 @@ function RoleSelect({
         ))}
       </SelectContent>
     </Select>
+  )
+}
+
+type GuestLink = {
+  id: string
+  role: "view" | "comment"
+  label: string
+  expiresAt: string
+  active: boolean
+  guests: string[]
+}
+
+const guestRoles = roles.filter((r) => r.value !== "edit")
+const guestHours = [
+  { value: "1", label: "1 小時" },
+  { value: "24", label: "1 天" },
+  { value: "168", label: "7 天" },
+]
+
+// Guest links, for people without a lab account: make one (who it is for,
+// what they may do, for how long), copy it once, revoke it any time.
+function GuestPanel({ documentId }: { documentId: string }) {
+  const [links, setLinks] = React.useState<GuestLink[]>([])
+  const [label, setLabel] = React.useState("")
+  const [role, setRole] = React.useState<RoleValue>("comment")
+  const [hours, setHours] = React.useState("24")
+  const [made, setMade] = React.useState<string | null>(null)
+
+  const refresh = React.useCallback(async () => {
+    const result = await loadGuestLinks({ id: documentId })
+    if (result.error) toast.error(result.error)
+    else setLinks((result.data ?? []).filter((link) => link.active))
+  }, [documentId])
+
+  React.useEffect(() => {
+    loadGuestLinks({ id: documentId }).then((result) => {
+      if (!result.error)
+        setLinks((result.data ?? []).filter((link) => link.active))
+    })
+  }, [documentId])
+
+  const make = async () => {
+    const result = await inviteGuest({
+      id: documentId,
+      role,
+      hours,
+      label: label.trim() || undefined,
+    })
+    if (!result.data) return toast.error(result.error ?? "產生失敗")
+    setMade(result.data.url)
+    setLabel("")
+    await navigator.clipboard?.writeText(result.data.url).catch(() => {})
+    toast.success("已複製訪客連結")
+    refresh()
+  }
+
+  return (
+    <div className="flex flex-col gap-4 border-t border-border pt-6">
+      <h3 className="font-semibold">訪客連結</h3>
+      <div className="flex gap-2">
+        <Input
+          value={label}
+          onChange={(event) => setLabel(event.target.value)}
+          placeholder="給誰"
+          aria-label="給誰"
+          maxLength={80}
+          className="min-w-0 flex-1"
+        />
+        <RoleSelect value={role} onChange={setRole} options={guestRoles} />
+        <Select
+          value={hours}
+          onValueChange={(next) => next && setHours(next)}
+          items={guestHours}
+        >
+          <SelectTrigger className="w-24" aria-label="有效時間">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {guestHours.map((h) => (
+              <SelectItem key={h.value} value={h.value}>
+                {h.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button onClick={make}>產生</Button>
+      </div>
+      {made && (
+        <Input
+          readOnly
+          value={made}
+          aria-label="訪客連結"
+          onFocus={(event) => event.target.select()}
+        />
+      )}
+      {links.length > 0 && (
+        <ul className="flex flex-col">
+          {links.map((link) => (
+            <li
+              key={link.id}
+              className="flex items-center gap-2 border-b border-border py-2"
+            >
+              <span className="min-w-0 flex-1 truncate">
+                {link.label || "訪客"}
+                <span className="ml-2 text-muted-foreground">
+                  {roles.find((r) => r.value === link.role)?.label}，到{" "}
+                  {formatWhen(link.expiresAt)}
+                  {link.guests.length > 0 && `，${link.guests.join("、")}`}
+                </span>
+              </span>
+              <Button
+                variant="ghost"
+                onClick={async () => {
+                  const result = await uninviteGuest({ linkId: link.id })
+                  if (result.error) toast.error(result.error)
+                  else refresh()
+                }}
+              >
+                撤銷
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }

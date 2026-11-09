@@ -18,6 +18,11 @@ import {
   shareDocument,
   unshareDocument,
 } from "@/lib/actions/documents"
+import {
+  createGuestLink,
+  listGuestLinks,
+  revokeGuestLink,
+} from "@/lib/actions/guests"
 import { listMembers } from "@/lib/actions/members"
 import { requireActor } from "@/lib/auth/session"
 
@@ -44,6 +49,12 @@ export const loadShares = async (input: unknown) => call(listShares, input)
 export const share = async (input: unknown) => call(shareDocument, input)
 export const unshare = async (input: unknown) => call(unshareDocument, input)
 export const loadMembers = async () => call(listMembers, {})
+export const inviteGuest = async (input: unknown) =>
+  call(createGuestLink, input)
+export const loadGuestLinks = async (input: unknown) =>
+  call(listGuestLinks, input)
+export const uninviteGuest = async (input: unknown) =>
+  call(revokeGuestLink, input)
 
 export const mark = async (input: unknown) => call(addAnnotation, input)
 export const unmark = async (input: unknown) => call(deleteAnnotation, input)

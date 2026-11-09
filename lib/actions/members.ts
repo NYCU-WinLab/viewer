@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm"
+import { and, eq, isNull, sql } from "drizzle-orm"
 import { z } from "zod"
 
 import { defineAction } from "@/lib/actions/define"
@@ -27,7 +27,8 @@ export const listMembers = defineAction({
         .leftJoin(
           account,
           and(eq(account.userId, user.id), eq(account.providerId, "keycloak"))
-        ),
+        )
+        .where(isNull(user.guestLinkId)),
       // Without Keycloak, the list is who has signed in.
       labMembers().catch(() => []),
     ])
@@ -65,7 +66,8 @@ export async function memberUserId(id: string) {
   const [existing] = await db
     .select({ id: user.id })
     .from(user)
-    .where(eq(user.id, id))
+    // A guest is never a member: no grants for them.
+    .where(and(eq(user.id, id), isNull(user.guestLinkId)))
   if (existing) return existing.id
   const [linked] = await db
     .select({ userId: account.userId })

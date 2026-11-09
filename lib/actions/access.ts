@@ -1,8 +1,14 @@
-import { and, eq } from "drizzle-orm"
+import { and, eq, gt, isNull } from "drizzle-orm"
 
 import type { Actor } from "@/lib/actions/define"
 import { db } from "@/lib/db"
-import { documentGrants, documents, type Role } from "@/lib/db/schema"
+import {
+  documentGrants,
+  documents,
+  guestLinks,
+  type Role,
+  user,
+} from "@/lib/db/schema"
 
 export type Access = Role | "owner"
 
@@ -28,7 +34,22 @@ export async function accessTo(
     .limit(1)
   if (!row) return null
   if (row.ownerId === actor.userId) return "owner"
-  return row.role ?? null
+  if (row.role) return row.role
+  // A guest: their link's role, while the link is active and is for this
+  // document. Guests never own documents or hold grants.
+  const [guest] = await db
+    .select({ role: guestLinks.role })
+    .from(user)
+    .innerJoin(guestLinks, eq(guestLinks.id, user.guestLinkId))
+    .where(
+      and(
+        eq(user.id, actor.userId),
+        eq(guestLinks.documentId, documentId),
+        isNull(guestLinks.revokedAt),
+        gt(guestLinks.expiresAt, new Date())
+      )
+    )
+  return guest?.role ?? null
 }
 
 /** The one check every document action starts with: at least `needed`,
