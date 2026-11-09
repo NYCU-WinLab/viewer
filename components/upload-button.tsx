@@ -119,7 +119,7 @@ export function UploadButton() {
         上傳
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
+        <DialogContent size="wide">
           <DialogHeader>
             <DialogTitle>上傳文件</DialogTitle>
           </DialogHeader>
