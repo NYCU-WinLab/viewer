@@ -57,6 +57,7 @@ export default async function DocumentPage({
               versions={doc.versions}
               canEdit={atLeast(doc.access, "edit")}
               isOwner={doc.access === "owner"}
+              nextcloudShareUrl={doc.nextcloudShareUrl}
             />
           }
         />

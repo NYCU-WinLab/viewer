@@ -29,6 +29,13 @@
       "when": 1794198091013,
       "tag": "0003_blue_strong_guy",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794212754727,
+      "tag": "0004_dazzling_brother_voodoo",
+      "breakpoints": true
     }
   ]
 }

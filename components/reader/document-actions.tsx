@@ -62,12 +62,16 @@ export function DocumentActions({
   versions,
   canEdit,
   isOwner,
+  nextcloudShareUrl,
 }: {
   documentId: string
   version: number
   versions: Version[]
   canEdit: boolean
   isOwner: boolean
+  /** Set for a document bound to a Nextcloud file: members are shared
+   * there, and only guest links here. */
+  nextcloudShareUrl: string | null
 }) {
   const router = useRouter()
   const [dialog, setDialog] = React.useState<"upload" | "share" | null>(null)
@@ -147,7 +151,23 @@ export function DocumentActions({
           </DialogHeader>
           {dialog === "share" && (
             <>
-              <SharePanel documentId={documentId} isOwner={isOwner} />
+              {nextcloudShareUrl ? (
+                <Button
+                  variant="outline"
+                  className="self-start"
+                  render={
+                    <a
+                      href={nextcloudShareUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    />
+                  }
+                >
+                  在 Nextcloud 分享
+                </Button>
+              ) : (
+                <SharePanel documentId={documentId} isOwner={isOwner} />
+              )}
               <GuestPanel documentId={documentId} />
             </>
           )}

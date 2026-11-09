@@ -197,3 +197,20 @@ export const nextcloudTokens = pgTable("nextcloud_tokens", {
   createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
 })
+
+// What a member may do with a Nextcloud file, as Nextcloud said last time
+// it was asked: owner, edit or comment, or null for no access. A document
+// bound to a file takes its access only from here (lib/actions/
+// nextcloud-access.ts), and a row older than a minute is asked again.
+export const nextcloudAccess = pgTable(
+  "nextcloud_access",
+  {
+    userId: uuid()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    fileId: text().notNull(),
+    access: text().$type<"owner" | Role>(),
+    checkedAt: timestamp({ withTimezone: true }).notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.fileId] })]
+)
