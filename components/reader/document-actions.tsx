@@ -305,6 +305,7 @@ const guestHours = [
 function GuestPanel({ documentId }: { documentId: string }) {
   const [links, setLinks] = React.useState<GuestLink[]>([])
   const [label, setLabel] = React.useState("")
+  const [email, setEmail] = React.useState("")
   const [role, setRole] = React.useState<RoleValue>("comment")
   const [hours, setHours] = React.useState("24")
   const [made, setMade] = React.useState<string | null>(null)
@@ -328,12 +329,17 @@ function GuestPanel({ documentId }: { documentId: string }) {
       role,
       hours,
       label: label.trim() || undefined,
+      email: email.trim() || undefined,
     })
     if (!result.data) return toast.error(result.error ?? "產生失敗")
-    setMade(result.data.url)
+    const { url, mailed, mailError } = result.data
+    setMade(url)
     setLabel("")
-    await navigator.clipboard?.writeText(result.data.url).catch(() => {})
-    toast.success("已複製訪客連結")
+    setEmail("")
+    await navigator.clipboard?.writeText(url).catch(() => {})
+    if (mailed) toast.success("已寄出邀請信，連結也已複製")
+    else if (mailError) toast.error(`邀請信沒寄出：${mailError}。連結已複製`)
+    else toast.success("已複製訪客連結")
     refresh()
   }
 
@@ -366,7 +372,17 @@ function GuestPanel({ documentId }: { documentId: string }) {
             ))}
           </SelectContent>
         </Select>
-        <Button onClick={make}>產生</Button>
+      </div>
+      <div className="flex gap-2">
+        <Input
+          type="email"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          placeholder="寄到信箱（選填）"
+          aria-label="寄到信箱"
+          className="min-w-0 flex-1"
+        />
+        <Button onClick={make}>{email.trim() ? "寄出" : "產生"}</Button>
       </div>
       {made && (
         <Input

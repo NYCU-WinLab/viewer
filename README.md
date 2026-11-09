@@ -72,6 +72,7 @@ Set these in `.env`; [.env.example](.env.example) documents every one.
 | `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET` | The viewer's Keycloak client | required |
 | `NEXTCLOUD_URL`, `NEXTCLOUD_USER`, `NEXTCLOUD_APP_PASSWORD` | Where the files live | required |
 | `NEXTCLOUD_ROOT` | The folder in that account the viewer owns | `viewer` |
+| `PORTAL_URL`, `PORTAL_SERVICE_KEY` | Where guest invitations are mailed from: a portal service key allowed into 邀請信; no mail when empty | `https://portal.winlab.tw`, empty |
 | `VIEWER_VERSION` | Image tag | `main` |
 | `VIEWER_BIND`, `VIEWER_PORT` | Where web listens on the host | `127.0.0.1`, `3000` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP/HTTP endpoint for traces and error logs; off when empty | empty |
