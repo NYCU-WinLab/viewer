@@ -102,7 +102,10 @@ function AppShell({
         className="pointer-events-none fixed inset-x-0 bottom-0 z-40 h-16 mask-t-from-0% backdrop-blur-md"
       />
 
-      <header className="fixed top-4 left-4 z-50 flex items-center gap-4">
+      <header
+        data-slot="corner-top-left"
+        className="fixed top-4 left-4 z-50 flex items-center gap-4"
+      >
         {corners?.topLeft ?? (
           <nav aria-label="位置" className="flex items-center gap-2">
             {breadcrumb.map((crumb, index) => {

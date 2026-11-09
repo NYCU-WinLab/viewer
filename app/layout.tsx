@@ -45,6 +45,16 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         jetbrainsMono.variable
       )}
     >
+      <head>
+        {/* Inside Nextcloud's frame the breadcrumb goes: Nextcloud has its
+            own, and the lab's pages may not be framed. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "if(window.top!==window.self)document.documentElement.dataset.embedded=''",
+          }}
+        />
+      </head>
       <body>
         <ThemeProvider>
           {children}

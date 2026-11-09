@@ -4,8 +4,8 @@
     <id>winlab_viewer</id>
     <name>WinLab Viewer</name>
     <summary>Open a PDF, Word or PowerPoint file in WinLab Viewer</summary>
-    <description>Adds "Open in Viewer" to the Files menu of PDF, Word and PowerPoint files. It opens viewer.winlab.tw, which imports the file from the member's own Nextcloud.</description>
-    <version>1.0.0</version>
+    <description>Adds "Open in Viewer" to the Files menu of PDF, Word and PowerPoint files. It shows the file in viewer.winlab.tw inside Nextcloud; the viewer reads the file from the member's own Nextcloud.</description>
+    <version>1.1.0</version>
     <licence>agpl</licence>
     <author>NYCU WinLab</author>
     <namespace>WinlabViewer</namespace>

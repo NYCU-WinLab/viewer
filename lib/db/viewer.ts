@@ -30,12 +30,16 @@ export const documents = pgTable(
      * file again adds a version here instead of a new document. */
     nextcloudUser: text(),
     nextcloudPath: text(),
+    // Nextcloud's own id of the file: the same after a rename or a move,
+    // and for every member the file is shared with.
+    nextcloudFileId: text(),
     createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
     index().on(table.ownerId),
     index().on(table.nextcloudUser, table.nextcloudPath),
+    index().on(table.nextcloudFileId),
   ]
 )
 

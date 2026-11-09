@@ -212,7 +212,7 @@ export async function storeVersion(
     body: Uint8Array
     fileName: string
     documentId?: string
-    nextcloud?: { user: string; path: string; etag: string }
+    nextcloud?: { user: string; path: string; etag: string; fileId: string }
   }
 ) {
   const { body } = input
@@ -232,6 +232,7 @@ export async function storeVersion(
           ownerId: actor.userId,
           nextcloudUser: input.nextcloud?.user,
           nextcloudPath: input.nextcloud?.path,
+          nextcloudFileId: input.nextcloud?.fileId,
         })
         .returning({ id: documents.id })
     )[0].id
