@@ -2,7 +2,8 @@
 # Builds the winlab_viewer Nextcloud app and installs it on the WinLab
 # Nextcloud (k8s, namespace nextcloud). Build where Node is (npm ci && npm
 # run build), then run this with kubectl and the winfra kubeconfig
-# (KUBECONFIG).
+# (KUBECONFIG). A new version in appinfo/info.xml puts Nextcloud in
+# "update required" until occ upgrade runs, so this runs it at once.
 set -euo pipefail
 cd "$(dirname "$0")"
 test -f winlab_viewer/js/winlab_viewer-main.js || {
@@ -16,4 +17,4 @@ COPYFILE_DISABLE=1 tar -C . --no-xattrs --exclude=src -cf - winlab_viewer |
     tar -C /var/www/html/custom_apps --no-same-owner -xf -
 kubectl -n nextcloud exec "$pod" -c nextcloud -- sh -c \
   'chown -R www-data:www-data /var/www/html/custom_apps/winlab_viewer &&
-   su -s /bin/sh www-data -c "php occ app:enable winlab_viewer"'
+   su -s /bin/sh www-data -c "php occ app:enable winlab_viewer && php occ upgrade"'
