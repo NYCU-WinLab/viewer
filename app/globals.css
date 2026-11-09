@@ -369,3 +369,8 @@
 html[data-embedded] [data-slot="corner-top-left"] {
   display: none;
 }
+
+/* A long press on a card opens its menu, not iOS's link preview. */
+[data-slot="context-menu-trigger"] {
+  -webkit-touch-callout: none;
+}
