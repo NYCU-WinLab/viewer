@@ -364,3 +364,8 @@
     left 120ms linear,
     top 120ms linear;
 }
+
+/* Inside Nextcloud's frame (app/layout.tsx sets data-embedded). */
+html[data-embedded] [data-slot="corner-top-left"] {
+  display: none;
+}

@@ -13,6 +13,7 @@ use OCP\AppFramework\Bootstrap\IRegistrationContext;
 
 class Application extends App implements IBootstrap {
 	public const APP_ID = 'winlab_viewer';
+	public const VIEWER_URL = 'https://viewer.winlab.tw';
 
 	public function __construct() {
 		parent::__construct(self::APP_ID);

@@ -7,7 +7,7 @@ import { accessTo, requireAccess } from "@/lib/actions/access"
 import { memberUserId } from "@/lib/actions/members"
 import { type Actor, defineAction } from "@/lib/actions/define"
 import { toPdf } from "@/lib/convert"
-import { db } from "@/lib/db"
+import { db, type Db } from "@/lib/db"
 import {
   annotations,
   documentGrants,
@@ -17,6 +17,9 @@ import {
   user,
 } from "@/lib/db/schema"
 import { deleteDocumentFiles, putDocumentFiles } from "@/lib/nextcloud"
+
+/** A transaction, as drizzle hands it to db.transaction's callback. */
+export type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0]
 
 export const MAX_DOCUMENT_BYTES = 100 * 1024 * 1024
 
@@ -204,15 +207,18 @@ export const uploadDocument = defineAction({
  * of one (the caller has checked edit access). docx and pptx become PDF
  * first. A file from Nextcloud keeps where it came from, so importing it
  * again finds this document. Used by upload_document and
- * import_nextcloud_file.
+ * import_nextcloud_file. With within, every row is written in that
+ * transaction (the caller's, holding its locks), never on a second
+ * connection that would wait for them.
  */
 export async function storeVersion(
   actor: Actor,
   input: {
+    within?: Tx
     body: Uint8Array
     fileName: string
     documentId?: string
-    nextcloud?: { user: string; path: string; etag: string }
+    nextcloud?: { user: string; path: string; etag: string; fileId: string }
   }
 ) {
   const { body } = input
@@ -222,21 +228,25 @@ export async function storeVersion(
 
   // A new document gets its row first (with no version yet, so nobody
   // lists it), then the files, then the version.
+  const conn = input.within ?? db
   const documentId =
     input.documentId ??
     (
-      await db
+      await conn
         .insert(documents)
         .values({
           name: baseName(input.fileName),
           ownerId: actor.userId,
           nextcloudUser: input.nextcloud?.user,
           nextcloudPath: input.nextcloud?.path,
+          nextcloudFileId: input.nextcloud?.fileId,
         })
         .returning({ id: documents.id })
     )[0].id
+  const write = <T>(work: (tx: Tx) => Promise<T>) =>
+    input.within ? input.within.transaction(work) : db.transaction(work)
   try {
-    return await db.transaction(async (tx) => {
+    return await write(async (tx) => {
       const [doc] = await tx
         .update(documents)
         .set({
@@ -269,8 +279,10 @@ export async function storeVersion(
       return { id: documentId, version: doc.number }
     })
   } catch (error) {
+    // Inside the caller's transaction, its rollback removes the row.
     if (!input.documentId) {
-      await db.delete(documents).where(eq(documents.id, documentId))
+      if (!input.within)
+        await db.delete(documents).where(eq(documents.id, documentId))
       await deleteDocumentFiles(documentId).catch(() => {})
     }
     throw error

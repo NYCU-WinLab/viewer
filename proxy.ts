@@ -14,12 +14,12 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Open: sign-in, guest links (/g/<secret>) and consent (they handle
-  // their own state), the auth and
+  // Open: sign-in, guest links (/g/<secret>), consent and the pages Nextcloud
+  // frames (/embed: they handle their own state), the auth and
   // MCP endpoints (they answer with OAuth errors, not redirects), uploads
   // (they check the session themselves, and proxy would buffer the body and
   // cut it at 10 MB), discovery documents and static files (pdfjs: the reader's worker and fonts).
   matcher: [
-    "/((?!(?:sign-in|g|consent|api/auth|api/upload|mcp|\\.well-known|_next/static|_next/image|pdfjs)(?:/|$)|icon\\.png$|apple-icon\\.png$).*)",
+    "/((?!(?:sign-in|g|consent|embed|api/auth|api/upload|mcp|\\.well-known|_next/static|_next/image|pdfjs)(?:/|$)|icon\\.png$|apple-icon\\.png$).*)",
   ],
 }

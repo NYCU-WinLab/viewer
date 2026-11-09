@@ -22,6 +22,13 @@
       "when": 1794195127761,
       "tag": "0002_white_whiplash",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794198091013,
+      "tag": "0003_blue_strong_guy",
+      "breakpoints": true
     }
   ]
 }

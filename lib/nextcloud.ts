@@ -219,6 +219,8 @@ export type NextcloudEntry = {
   size: number
   modified: string
   type: string
+  /** Nextcloud's id of the file, stable across renames and shares. */
+  fileId: string
 }
 
 const tag = (xml: string, name: string) =>
@@ -234,6 +236,35 @@ const unescapeXml = (text: string) =>
     .replace(/&apos;/g, "'")
     .replace(/&amp;/g, "&")
 
+const PROPS = `<?xml version="1.0"?><d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:prop><d:resourcetype/><d:getcontentlength/><d:getlastmodified/><d:getcontenttype/><d:getetag/><oc:fileid/></d:prop></d:propfind>`
+
+/** One file of the member's: its Nextcloud id and ETag, without the
+ * content, to tell whether it changed since the last import. */
+export async function memberFileInfo(token: NextcloudToken, path: string) {
+  const response = await fetch(memberUrl(token.user, path), {
+    method: "PROPFIND",
+    headers: {
+      authorization: `Bearer ${token.accessToken}`,
+      depth: "0",
+      "content-type": "application/xml",
+    },
+    body: PROPS,
+    signal: AbortSignal.timeout(15_000),
+  })
+  if (response.status === 404) throw new Error("找不到這個檔案")
+  if (!response.ok) fail("PROPFIND", response)
+  const xml = await response.text()
+  if (/<(?:\w+:)?collection\s*\/>/.test(tag(xml, "resourcetype")))
+    throw new Error("這是資料夾，不是檔案")
+  const fileId = tag(xml, "fileid")
+  if (!/^\d+$/.test(fileId)) throw new Error("Nextcloud 沒有回傳檔案編號")
+  return {
+    fileId,
+    etag: unescapeXml(tag(xml, "getetag")).replace(/"/g, ""),
+    size: Number(tag(xml, "getcontentlength")) || 0,
+  }
+}
+
 /** One folder of the member's files: folders first, then files, by name. */
 export async function listMemberFolder(
   token: NextcloudToken,
@@ -247,7 +278,7 @@ export async function listMemberFolder(
       depth: "1",
       "content-type": "application/xml",
     },
-    body: `<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/><d:getcontentlength/><d:getlastmodified/><d:getcontenttype/></d:prop></d:propfind>`,
+    body: PROPS,
     signal: AbortSignal.timeout(15_000),
   })
   if (response.status === 404) throw new Error("找不到這個資料夾")
@@ -270,6 +301,7 @@ export async function listMemberFolder(
       size: Number(tag(block, "getcontentlength")) || 0,
       modified: lastModified(tag(block, "getlastmodified")),
       type: tag(block, "getcontenttype"),
+      fileId: tag(block, "fileid"),
     })
   }
   return entries.sort(
@@ -278,16 +310,23 @@ export async function listMemberFolder(
   )
 }
 
-/** Downloads one of the member's files, up to maxBytes, with its ETag. */
+/** Downloads one of the member's files, up to maxBytes, with its ETag.
+ * With etag, only that content: a file changed or put in its place since
+ * memberFileInfo is refused, so it never lands in the wrong document. */
 export async function downloadMemberFile(
   token: NextcloudToken,
   path: string,
-  maxBytes: number
+  maxBytes: number,
+  etag?: string
 ) {
   const response = await fetch(memberUrl(token.user, path), {
-    headers: { authorization: `Bearer ${token.accessToken}` },
+    headers: {
+      authorization: `Bearer ${token.accessToken}`,
+      ...(etag ? { "if-match": `"${etag}"` } : {}),
+    },
     signal: AbortSignal.timeout(120_000),
   })
+  if (response.status === 412) throw new Error("檔案剛被改過，請再打開一次")
   if (response.status === 404) throw new Error("找不到這個檔案")
   if (!response.ok || !response.body) fail("GET", response)
   if (Number(response.headers.get("content-length")) > maxBytes)
