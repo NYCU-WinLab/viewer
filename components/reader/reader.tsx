@@ -14,6 +14,7 @@ import { toast } from "sonner"
 
 import { mark as saveMark } from "@/app/actions"
 import { PdfPage } from "@/components/reader/pdf-page"
+import { usePresence } from "@/components/reader/presence"
 import { StickyNote, formatWhen } from "@/components/reader/sticky-note"
 import type { Draft, Mark, Mode } from "@/components/reader/types"
 import { Button } from "@/components/ui/button"
@@ -106,7 +107,11 @@ export function Reader({
     []
   )
   const [width, setWidth] = React.useState(0)
-  const [mode, setMode] = React.useState<Mode>("read")
+  // The highlighter is in hand from the start, for anyone who may mark.
+  const [mode, setMode] = React.useState<Mode>(
+    canComment ? "highlight" : "read"
+  )
+  const presence = usePresence()
   const [selected, setSelected] = React.useState<string | null>(null)
   const [failed, setFailed] = React.useState(false)
   const [listOpen, setListOpen] = React.useState(false)
@@ -249,10 +254,31 @@ export function Reader({
     setSelected(mark.id)
   }
 
+  // My pointer, as a page and a point in page fractions, for the others.
+  const track = (event: React.PointerEvent) => {
+    if (!presence) return
+    const page = (event.target as Element).closest("[data-page]")
+    if (!page) return presence.move(null)
+    const box = page.getBoundingClientRect()
+    const round = (value: number) =>
+      Math.round(Math.min(1, Math.max(0, value)) * 1e4) / 1e4
+    presence.move({
+      page: Number(page.getAttribute("data-page")),
+      x: round((event.clientX - box.left) / box.width),
+      y: round((event.clientY - box.top) / box.height),
+    })
+  }
+  const others = (presence?.viewers ?? []).filter(
+    (v): v is typeof v & { cursor: NonNullable<typeof v.cursor> } =>
+      v.userId !== presence?.me.userId && v.cursor !== null
+  )
+
   return (
     <div className="flex flex-col gap-6 pb-24">
       <div
         ref={column}
+        onPointerMove={track}
+        onPointerLeave={() => presence?.move(null)}
         className="mx-auto flex w-full max-w-5xl flex-col gap-6"
       >
         {failed && (
@@ -275,6 +301,7 @@ export function Reader({
               selected={selected}
               onSelect={setSelected}
               onDraft={save}
+              cursors={others.filter((v) => v.cursor.page === index + 1)}
             />
           ))}
       </div>

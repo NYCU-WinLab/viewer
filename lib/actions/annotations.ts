@@ -120,6 +120,7 @@ export const listAnnotations = defineAction({
         .filter((note) => note.annotationId === mark.id)
         .map((note) => ({
           id: note.id,
+          authorId: note.authorId,
           author: note.author,
           mine: note.authorId === actor.userId,
           body: note.body,

@@ -1,18 +1,20 @@
 import { AppShell } from "@/components/app-shell"
 import { LiveRefresh } from "@/components/live-refresh"
 import { UploadButton } from "@/components/upload-button"
-import { runningBuild } from "@/lib/build"
 
-// The viewer's corners: the lab and the page in the breadcrumb, Upload in the
-// top right (it opens over the page), and the shell's default corners (the
-// build in the bottom left). No account corner: sign-in is Keycloak's.
+// The viewer's corners: the lab and the page in the breadcrumb, and the top
+// right (Upload by default; a document shows who is reading it instead).
+// The bottom corners stay empty: the reader's tool bar owns the bottom. No
+// account corner: sign-in is Keycloak's.
 export function ViewerShell({
   page,
   layout,
+  actions = <UploadButton />,
   children,
 }: {
   page?: { label: string; href: string; tip: string }
   layout?: "column" | "spotlight" | "wide"
+  actions?: React.ReactNode
   children: React.ReactNode
 }) {
   return (
@@ -23,8 +25,10 @@ export function ViewerShell({
         { label: "Viewer", href: "/", tip: "" },
         ...(page ? [page] : []),
       ]}
-      actions={<UploadButton />}
-      build={runningBuild()}
+      actions={actions}
+      // An empty fragment would reach the client as null and bring the
+      // defaults back, so the corners get an empty span.
+      corners={{ bottomLeft: <span />, bottomRight: <span /> }}
     >
       <LiveRefresh />
       {children}
