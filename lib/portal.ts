@@ -1,6 +1,6 @@
 // portal.winlab.tw: the lab's mail goes out through its send_invitation
 // action, called with a service key (one that belongs to the lab, made by
-// a portal admin on portal.winlab.tw/api-keys, allowed into 邀請信).
+// a portal admin on portal.winlab.tw/api-keys, allowed to send invitations).
 // PORTAL_URL and PORTAL_SERVICE_KEY come from the environment; without the
 // key, invitations are not mailed and the member copies the link instead.
 
