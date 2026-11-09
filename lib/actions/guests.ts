@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto"
 
-import { and, count, desc, eq, gt, isNull } from "drizzle-orm"
+import { and, desc, eq, gt, isNull } from "drizzle-orm"
 import { z } from "zod"
 
 import { requireAccess } from "@/lib/actions/access"
 import { defineAction } from "@/lib/actions/define"
-import { signInGuest } from "@/lib/auth/guest"
+import { signInGuest, signOutGuests } from "@/lib/auth/guest"
 import { db } from "@/lib/db"
 import { documents, guestLinks, user } from "@/lib/db/schema"
 
@@ -17,9 +17,6 @@ import { documents, guestLinks, user } from "@/lib/db/schema"
 
 /** How long a link may work, in hours: an hour, a day or a week. */
 export const GUEST_HOURS = [1, 24, 168] as const
-
-/** Guests one link may let in, so a leaked link cannot fill the table. */
-const GUESTS_MAX = 50
 
 const id = z.uuid().transform((value) => value.toLowerCase())
 const secretOf = z.string().regex(/^[A-Za-z0-9_-]{43}$/, "這個訪客連結無效")
@@ -128,6 +125,7 @@ export const revokeGuestLink = defineAction({
       .update(guestLinks)
       .set({ revokedAt: new Date() })
       .where(and(eq(guestLinks.id, input.linkId), isNull(guestLinks.revokedAt)))
+    await signOutGuests([input.linkId])
     return { revoked: true }
   },
 })
@@ -184,11 +182,6 @@ export const joinAsGuest = defineAction({
   }),
   run: async (_actor, input) => {
     const link = await activeLink(input.secret)
-    const [{ guests }] = await db
-      .select({ guests: count() })
-      .from(user)
-      .where(eq(user.guestLinkId, link.id))
-    if (guests >= GUESTS_MAX) throw new Error("這個訪客連結的人數已滿")
     await signInGuest({
       linkId: link.id,
       name: `${input.name}（訪客）`,

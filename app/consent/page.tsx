@@ -1,9 +1,7 @@
 import { ViewerShell } from "@/components/viewer-shell"
 import { StatusPage } from "@/components/status-page"
 import { getConsentRequest } from "@/lib/auth/consent"
-import { runAction } from "@/lib/actions/define"
-import { whoami } from "@/lib/actions/users"
-import { requireActor } from "@/lib/auth/session"
+import { getSession, requireActor } from "@/lib/auth/session"
 
 import { ConsentActions } from "./consent-actions"
 
@@ -16,9 +14,9 @@ export default async function Consent({ searchParams }: PageProps<"/consent">) {
       if (item !== undefined) params.append(key, item)
   }
   const query = params.toString()
-  const actor = await requireActor(`/consent?${query}`)
+  await requireActor(`/consent?${query}`)
   // Agents act for lab members; a guest has nothing to hand them.
-  if ((await runAction(whoami, actor, {})).guestDocumentId)
+  if ((await getSession())?.user.guestLinkId)
     return (
       <ViewerShell layout="spotlight">
         <StatusPage title="訪客不能授權" />
