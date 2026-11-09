@@ -154,7 +154,29 @@ export const importNextcloudFile = defineAction({
       })
       return { ...stored, unchanged: false }
     }
-    if (input.documentId) return store(input.documentId)
+    if (input.documentId) {
+      // Into a document bound to another file (or none), the version keeps
+      // no ETag: only the bound file's own ETags tell whether it changed.
+      const [target] = await db
+        .select({ fileId: documents.nextcloudFileId })
+        .from(documents)
+        .where(eq(documents.id, input.documentId))
+      if (target?.fileId !== info.fileId) {
+        const file = await downloadMemberFile(
+          token,
+          input.path,
+          MAX_DOCUMENT_BYTES,
+          info.etag || undefined
+        )
+        const stored = await storeVersion(actor, {
+          body: file.body,
+          fileName,
+          documentId: input.documentId,
+        })
+        return { ...stored, unchanged: false }
+      }
+      return store(input.documentId)
+    }
 
     // One import of a file at a time, so members opening it together make
     // one document, not one each. A member who finds it busy waits without
@@ -230,13 +252,13 @@ export const importNextcloudFile = defineAction({
 
 /** The bound file's id and the ETag of its newest version that came from
  * Nextcloud (a version uploaded by hand in between does not count). */
-async function boundFile(documentId: string) {
-  const [doc] = await db
+async function boundFile(documentId: string, conn: Tx | typeof db = db) {
+  const [doc] = await conn
     .select({ fileId: documents.nextcloudFileId })
     .from(documents)
     .where(eq(documents.id, documentId))
   if (!doc?.fileId) throw new Error("這份文件沒有綁定 Nextcloud 檔案")
-  const [latest] = await db
+  const [latest] = await conn
     .select({ etag: documentVersions.nextcloudEtag })
     .from(documentVersions)
     .where(
@@ -250,6 +272,21 @@ async function boundFile(documentId: string) {
   return { fileId: doc.fileId, etag: latest?.etag ?? null }
 }
 
+/** The bound file in the member's Nextcloud; a refused token asks them to
+ * link again instead of surfacing the WebDAV method. */
+async function fileById(
+  token: Awaited<ReturnType<typeof tokenOf>>,
+  fileId: string
+) {
+  try {
+    return await memberFileById(token, fileId)
+  } catch (error) {
+    if (error instanceof TokenRevoked)
+      throw new Error("Nextcloud 連結已失效，請重新連結")
+    throw error
+  }
+}
+
 export const checkNextcloudVersion = defineAction({
   name: "check_nextcloud_version",
   title: "檢查 Nextcloud 版本",
@@ -261,7 +298,7 @@ export const checkNextcloudVersion = defineAction({
     await requireAccess(actor, id, "edit")
     const bound = await boundFile(id)
     const token = await tokenOf(actor)
-    const file = await memberFileById(token, bound.fileId)
+    const file = await fileById(token, bound.fileId)
     if (!file) return { status: "missing" as const, path: null, modified: null }
     return {
       status:
@@ -285,19 +322,20 @@ export const syncNextcloudVersion = defineAction({
     await requireAccess(actor, id, "edit")
     const bound = await boundFile(id)
     const token = await tokenOf(actor)
-    const file = await memberFileById(token, bound.fileId)
+    const file = await fileById(token, bound.fileId)
     if (!file) throw new Error("你的 Nextcloud 找不到這份檔案")
     const fileName = file.path.split("/").pop() ?? ""
     if (!KINDS.test(fileName))
       throw new Error("這份檔案已不是 PDF、Word 或 PowerPoint")
     if (file.size > MAX_DOCUMENT_BYTES) throw new Error("檔案太大")
-    // One sync of a document at a time; a second one that finds the lock
-    // taken, or the file already stored, adds nothing.
+    // One sync of a document at a time; a second one waits (at most 30
+    // seconds, on this connection only) and then finds the file stored.
     return db.transaction(async (tx) => {
+      await tx.execute(sql`set local lock_timeout = '30s'`)
       await tx.execute(
         sql`select pg_advisory_xact_lock(hashtext(${"nextcloud:" + bound.fileId}))`
       )
-      const again = await boundFile(id)
+      const again = await boundFile(id, tx)
       const [current] = await tx
         .select({ number: documents.latestVersion })
         .from(documents)

@@ -213,7 +213,7 @@ function NextcloudSync({
         : state === "syncing"
           ? "轉檔中…"
           : state === "changed"
-            ? "Nextcloud 有新版本，同步"
+            ? "同步新版本"
             : "檢查 Nextcloud 版本"}
     </Button>
   )
