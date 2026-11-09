@@ -3,14 +3,7 @@ import { redirect } from "next/navigation"
 
 import { EmptyState } from "@/components/empty-state"
 import { PageHeader } from "@/components/page-header"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
+import { Badge } from "@/components/ui/badge"
 import { ViewerShell } from "@/components/viewer-shell"
 import { runAction } from "@/lib/actions/define"
 import { listDocuments } from "@/lib/actions/documents"
@@ -58,7 +51,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
     { label: "共用給我", href: "/?show=shared", on: show === "shared" },
   ]
   return (
-    <ViewerShell>
+    <ViewerShell layout="wide">
       <div className="flex flex-col gap-8">
         <PageHeader title="文件" />
         <nav aria-label="篩選" className="flex gap-6">
@@ -76,47 +69,53 @@ export default async function Home({ searchParams }: PageProps<"/">) {
         {documents.length === 0 ? (
           <EmptyState noun="文件" />
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>名稱</TableHead>
-                <TableHead>類型</TableHead>
-                <TableHead>擁有者</TableHead>
-                <TableHead>權限</TableHead>
-                <TableHead className="text-right">未處理</TableHead>
-                <TableHead className="text-right">更新</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {documents.map((doc) => (
-                <TableRow key={doc.id}>
-                  <TableCell>
-                    <Link
-                      href={`/d/${doc.id}`}
-                      prefetch
-                      className="font-medium hover:text-primary"
-                    >
-                      {doc.name}
-                    </Link>
-                    {doc.latestVersion > 1 && (
-                      <span className="ml-2 text-muted-foreground">
-                        v{doc.latestVersion}
-                      </span>
+          <ul className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+            {documents.map((doc) => (
+              <li key={doc.id}>
+                <Link
+                  href={`/d/${doc.id}`}
+                  prefetch
+                  className="group flex flex-col gap-3"
+                >
+                  <div className="relative aspect-4/3 overflow-hidden rounded-menu bg-muted">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- a member-only route, not an optimizable asset */}
+                    <img
+                      src={`/files/${doc.id}/${doc.latestVersion}/cover`}
+                      alt=""
+                      loading="lazy"
+                      className="size-full object-contain"
+                    />
+                    {doc.openMarks > 0 && (
+                      <Badge className="absolute top-2 right-2">
+                        {doc.openMarks} 未處理
+                      </Badge>
                     )}
-                  </TableCell>
-                  <TableCell>{kinds[doc.kind]}</TableCell>
-                  <TableCell>{doc.ownerName}</TableCell>
-                  <TableCell>{roles[doc.access]}</TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {doc.openMarks || ""}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground tabular-nums">
-                    {when.format(new Date(doc.updatedAt))}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="truncate font-medium group-hover:text-primary">
+                      {doc.name}
+                      {doc.latestVersion > 1 && (
+                        <span className="ml-2 font-normal text-muted-foreground">
+                          v{doc.latestVersion}
+                        </span>
+                      )}
+                    </span>
+                    <span className="flex gap-3 text-muted-foreground">
+                      <span>{kinds[doc.kind]}</span>
+                      <span>
+                        {doc.access === "owner"
+                          ? roles.owner
+                          : `${doc.ownerName}，${roles[doc.access]}`}
+                      </span>
+                      <span className="ml-auto tabular-nums">
+                        {when.format(new Date(doc.updatedAt))}
+                      </span>
+                    </span>
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
     </ViewerShell>

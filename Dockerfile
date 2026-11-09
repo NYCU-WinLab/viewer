@@ -12,6 +12,9 @@ FROM node:24-slim
 WORKDIR /app
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0 \
     TZ=Asia/Taipei
+# pdftoppm draws the first page for the covers on the home page.
+RUN apt-get update && apt-get install -y --no-install-recommends poppler-utils \
+ && rm -rf /var/lib/apt/lists/*
 # The build corner tips the time and links the run. Last, so a new run
 # reuses every layer above; the commit comes from VIEWER_VERSION at run time.
 ARG BUILD_TIME BUILD_URL
