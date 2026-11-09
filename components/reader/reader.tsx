@@ -19,10 +19,11 @@ import { StickyNote, formatWhen } from "@/components/reader/sticky-note"
 import type { Draft, Mark, Mode } from "@/components/reader/types"
 import { Button } from "@/components/ui/button"
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
+  Toolbar,
+  ToolbarPanel,
+  ToolbarPanelContent,
+  ToolbarPanelTrigger,
+} from "@/components/ui/toolbar"
 import {
   Tooltip,
   TooltipContent,
@@ -323,11 +324,7 @@ export function Reader({
 
       {/* The tool bar floats over the bottom of the document. */}
       <div className="fixed inset-x-0 bottom-4 z-30 flex justify-center px-4">
-        <div
-          role="toolbar"
-          aria-label="工具"
-          className="flex items-center gap-1 rounded-surface border border-border bg-overlay p-1 shadow-md backdrop-blur-md"
-        >
+        <Toolbar aria-label="工具">
           {tools.map((tool) => {
             const disabled = tool.mode !== "read" && !canComment
             return (
@@ -354,14 +351,14 @@ export function Reader({
             )
           })}
           <span aria-hidden className="mx-1 h-6 w-px bg-border" />
-          <Popover open={listOpen} onOpenChange={setListOpen}>
-            <PopoverTrigger
+          <ToolbarPanel open={listOpen} onOpenChange={setListOpen}>
+            <ToolbarPanelTrigger
               render={<Button variant="ghost" className="rounded-full" />}
             >
               <MessageSquareTextIcon />
               {open}
-            </PopoverTrigger>
-            <PopoverContent side="top" align="center" className="w-96">
+            </ToolbarPanelTrigger>
+            <ToolbarPanelContent>
               <MarkList
                 marks={marks}
                 onPick={(mark) => {
@@ -369,10 +366,10 @@ export function Reader({
                   focus(mark)
                 }}
               />
-            </PopoverContent>
-          </Popover>
+            </ToolbarPanelContent>
+          </ToolbarPanel>
           {actions}
-        </div>
+        </Toolbar>
       </div>
     </div>
   )

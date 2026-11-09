@@ -27,17 +27,17 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
-import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  ToolbarPanel,
+  ToolbarPanelContent,
+  ToolbarPanelTrigger,
+} from "@/components/ui/toolbar"
 import { cn } from "@/lib/utils"
 
 type Version = {
@@ -75,13 +75,13 @@ export function DocumentActions({
 
   return (
     <>
-      <Popover>
-        <PopoverTrigger
+      <ToolbarPanel>
+        <ToolbarPanelTrigger
           render={<Button variant="ghost" className="rounded-full" />}
         >
           <HistoryIcon />v{version}
-        </PopoverTrigger>
-        <PopoverContent side="top" align="center" className="w-80">
+        </ToolbarPanelTrigger>
+        <ToolbarPanelContent>
           <ul className="flex flex-col">
             {[...versions].reverse().map((v) => (
               <li key={v.number}>
@@ -112,8 +112,8 @@ export function DocumentActions({
               上傳新版本
             </Button>
           )}
-        </PopoverContent>
-      </Popover>
+        </ToolbarPanelContent>
+      </ToolbarPanel>
       {canEdit && (
         <Button
           variant="ghost"
