@@ -47,13 +47,15 @@ export default async function Home({ searchParams }: PageProps<"/">) {
   const filters = [
     { label: "全部", href: "/", tip: "", current: !show },
     { label: "我的", href: "/?show=mine", tip: "", current: show === "mine" },
-    { label: "共用給我", href: "/?show=shared", tip: "", current: show === "shared" },
+    {
+      label: "共用給我",
+      href: "/?show=shared",
+      tip: "",
+      current: show === "shared",
+    },
   ]
   return (
-    <ViewerShell
-      layout="wide"
-      nav={filters}
-    >
+    <ViewerShell layout="wide" nav={filters}>
       <div className="mx-auto w-full max-w-6xl">
         <h1 className="sr-only">文件</h1>
         {documents.length === 0 ? (

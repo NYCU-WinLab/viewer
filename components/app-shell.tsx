@@ -202,7 +202,9 @@ function PageNav({
               // them when asked; then switching between them needs no
               // round trip.
               prefetch
-              aria-current={(item.current ?? isCurrent(item.href)) ? "page" : undefined}
+              aria-current={
+                (item.current ?? isCurrent(item.href)) ? "page" : undefined
+              }
               className={cn(
                 cornerLinkClassName,
                 (item.current ?? isCurrent(item.href)) && "text-foreground"
@@ -226,7 +228,9 @@ function PageNav({
               <Link
                 key={item.href}
                 href={item.href}
-                aria-current={(item.current ?? isCurrent(item.href)) ? "page" : undefined}
+                aria-current={
+                  (item.current ?? isCurrent(item.href)) ? "page" : undefined
+                }
                 onClick={() => setOpen(false)}
                 className={cn(
                   "flex h-10 items-center rounded-control px-3 text-muted-foreground transition-colors duration-state outline-none hover:bg-muted hover:text-foreground focus-visible:bg-muted",
