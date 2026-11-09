@@ -4,8 +4,16 @@ import type { PDFDocumentProxy } from "pdfjs-dist"
 import * as React from "react"
 
 import { RemoteCursor } from "@/components/reader/presence"
+import { MarkActions } from "@/components/reader/sticky-note"
 import type { Draft, Mark, Mode } from "@/components/reader/types"
 import type { Viewer } from "@/lib/presence"
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu"
 import { cn } from "@/lib/utils"
 
 type Size = { width: number; height: number }
@@ -55,6 +63,9 @@ export function PdfPage({
   onSelect,
   onDraft,
   cursors,
+  canComment,
+  canManage,
+  onChanged,
 }: {
   pdf: PDFDocumentProxy
   number: number
@@ -69,6 +80,9 @@ export function PdfPage({
   onDraft: (draft: Draft) => void
   /** Other members' pointers on this page. */
   cursors: (Viewer & { cursor: NonNullable<Viewer["cursor"]> })[]
+  canComment: boolean
+  canManage: boolean
+  onChanged: () => void
 }) {
   const frame = React.useRef<HTMLDivElement>(null)
   const canvas = React.useRef<HTMLCanvasElement>(null)
@@ -214,6 +228,22 @@ export function PdfPage({
             selected={mark.id === selected}
             clickable={marksClickable}
             onSelect={() => onSelect(mark.id)}
+            menu={
+              <>
+                <ContextMenuItem onClick={() => onSelect(mark.id)}>
+                  便利貼
+                </ContextMenuItem>
+                {(canComment || mark.mine || canManage) && (
+                  <ContextMenuSeparator />
+                )}
+                <MarkActions
+                  mark={mark}
+                  canComment={canComment}
+                  canManage={canManage}
+                  onChanged={onChanged}
+                />
+              </>
+            }
           />
         ))}
         {drawing && mode === "box" && drawing.length === 2 && (
@@ -244,23 +274,61 @@ export function PdfPage({
 
 // One mark: a highlighter's lines (fluorescent yellow), a box (blue) or a
 // pen stroke (red), the box and the pen equally thick. Resolved marks
-// fade; the selected one is drawn heavier.
+// fade; the selected one is drawn heavier. A right click (or a long press)
+// on it opens its menu.
 function MarkShape({
   mark,
   corner,
   selected,
   clickable,
   onSelect,
+  menu,
 }: {
   mark: Mark
   corner: { rx?: number; ry?: number }
   selected: boolean
   clickable: boolean
   onSelect: () => void
+  menu: React.ReactNode
 }) {
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger
+        render={
+          <MarkDrawing
+            mark={mark}
+            corner={corner}
+            selected={selected}
+            clickable={clickable}
+            onSelect={onSelect}
+          />
+        }
+      />
+      <ContextMenuContent>{menu}</ContextMenuContent>
+    </ContextMenu>
+  )
+}
+
+function MarkDrawing({
+  mark,
+  corner,
+  selected,
+  clickable,
+  onSelect,
+  className,
+  ...props
+}: {
+  mark: Mark
+  corner: { rx?: number; ry?: number }
+  selected: boolean
+  clickable: boolean
+  onSelect: () => void
+} & React.ComponentProps<"g">) {
   const group = cn(
-    clickable && "pointer-events-auto cursor-pointer",
-    mark.resolvedAt && !selected && "opacity-40"
+    "pointer-events-auto",
+    clickable && "cursor-pointer",
+    mark.resolvedAt && !selected && "opacity-40",
+    className
   )
   const click = (event: React.MouseEvent) => {
     event.stopPropagation()
@@ -269,7 +337,7 @@ function MarkShape({
   if ("points" in mark.geometry) {
     const d = strokePath(mark.geometry.points)
     return (
-      <g data-mark={mark.id} className={group} onClick={click}>
+      <g {...props} data-mark={mark.id} className={group} onClick={click}>
         {/* A wide invisible stroke, so a thin line is easy to click. */}
         <path
           d={d}
@@ -288,7 +356,7 @@ function MarkShape({
     )
   }
   return (
-    <g data-mark={mark.id} className={group} onClick={click}>
+    <g {...props} data-mark={mark.id} className={group} onClick={click}>
       {mark.geometry.rects.map(([x, y, w, h], index) => (
         <rect
           key={index}

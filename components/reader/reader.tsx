@@ -302,6 +302,9 @@ export function Reader({
               onSelect={setSelected}
               onDraft={save}
               cursors={others.filter((v) => v.cursor.page === index + 1)}
+              canComment={canComment}
+              canManage={canManage}
+              onChanged={() => router.refresh()}
             />
           ))}
       </div>
@@ -319,7 +322,7 @@ export function Reader({
       )}
 
       {/* The tool bar floats over the bottom of the document. */}
-      <div className="fixed inset-x-0 bottom-6 z-30 flex justify-center px-4">
+      <div className="fixed inset-x-0 bottom-4 z-30 flex justify-center px-4">
         <div
           role="toolbar"
           aria-label="工具"

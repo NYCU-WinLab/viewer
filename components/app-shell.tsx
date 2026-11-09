@@ -102,7 +102,7 @@ function AppShell({
         className="pointer-events-none fixed inset-x-0 bottom-0 z-40 h-16 mask-t-from-0% backdrop-blur-md"
       />
 
-      <header className="fixed top-6 left-6 z-50 flex items-center gap-4">
+      <header className="fixed top-4 left-4 z-50 flex items-center gap-4">
         {corners?.topLeft ?? (
           <nav aria-label="位置" className="flex items-center gap-2">
             {breadcrumb.map((crumb, index) => {
@@ -134,7 +134,7 @@ function AppShell({
         )}
       </header>
 
-      <div className="fixed top-6 right-6 z-50 flex items-center gap-4">
+      <div className="fixed top-4 right-4 z-50 flex items-center gap-4">
         {corners?.topRight ?? (
           <>
             {nav.length > 0 && <PageNav nav={nav} isCurrent={isCurrent} />}
@@ -144,11 +144,11 @@ function AppShell({
         )}
       </div>
 
-      <div className="fixed bottom-6 left-6 z-50 flex items-center gap-4">
+      <div className="fixed bottom-4 left-4 z-50 flex items-center gap-4">
         {corners?.bottomLeft ?? <BuildVersion build={build} />}
       </div>
 
-      <div className="fixed right-6 bottom-6 z-50 flex items-center gap-4">
+      <div className="fixed right-4 bottom-4 z-50 flex items-center gap-4">
         {corners?.bottomRight ?? (
           <CornerTip tip="NYCU WinLab" corner="bottom-right">
             <span

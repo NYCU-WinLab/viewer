@@ -39,9 +39,9 @@ type Version = {
 }
 
 const roles = [
-  { value: "view", label: "可檢視" },
-  { value: "comment", label: "可留言" },
-  { value: "edit", label: "可編輯" },
+  { value: "view", label: "僅檢視" },
+  { value: "comment", label: "可註解" },
+  { value: "edit", label: "可管理" },
 ] as const
 
 type RoleValue = (typeof roles)[number]["value"]

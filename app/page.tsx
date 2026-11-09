@@ -20,9 +20,9 @@ export const dynamic = "force-dynamic"
 const kinds = { pdf: "PDF", docx: "Word", pptx: "PowerPoint" } as const
 const roles = {
   owner: "擁有者",
-  edit: "可編輯",
-  comment: "可留言",
-  view: "可檢視",
+  edit: "可管理",
+  comment: "可註解",
+  view: "僅檢視",
 } as const
 
 const when = new Intl.DateTimeFormat("zh-TW", {
