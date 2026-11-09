@@ -28,10 +28,12 @@ import {
 } from "@/lib/actions/guests"
 import { listMembers } from "@/lib/actions/members"
 import {
+  checkNextcloudVersion,
   importNextcloudFile,
   linkNextcloud,
   listNextcloudFiles,
   nextcloudStatus,
+  syncNextcloudVersion,
   unlinkNextcloud,
 } from "@/lib/actions/nextcloud"
 import { whoami } from "@/lib/actions/users"
@@ -66,4 +68,6 @@ export const actions: Action[] = [
   unlinkNextcloud,
   listNextcloudFiles,
   importNextcloudFile,
+  checkNextcloudVersion,
+  syncNextcloudVersion,
 ]

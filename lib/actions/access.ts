@@ -1,7 +1,6 @@
 import { and, eq, gt, isNull } from "drizzle-orm"
 
 import type { Actor } from "@/lib/actions/define"
-import { nextcloudAccessTo } from "@/lib/actions/nextcloud-access"
 import { db } from "@/lib/db"
 import {
   documentGrants,
@@ -22,11 +21,7 @@ export async function accessTo(
   documentId: string
 ): Promise<Access | null> {
   const [row] = await db
-    .select({
-      ownerId: documents.ownerId,
-      fileId: documents.nextcloudFileId,
-      role: documentGrants.role,
-    })
+    .select({ ownerId: documents.ownerId, role: documentGrants.role })
     .from(documents)
     .leftJoin(
       documentGrants,
@@ -38,23 +33,8 @@ export async function accessTo(
     .where(eq(documents.id, documentId))
     .limit(1)
   if (!row) return null
-  // A document bound to a Nextcloud file is shared there: Nextcloud alone
-  // decides, for the member who imported it too. A guest link still works.
-  if (row.fileId) {
-    const guest = await guestRole(actor, documentId)
-    if (guest) return guest
-    const { access, unavailable } = await nextcloudAccessTo(actor, [row.fileId])
-    const found = access.get(row.fileId) ?? null
-    if (!found && unavailable)
-      throw new Error("暫時連不上 Nextcloud，請稍後再試")
-    return found
-  }
   if (row.ownerId === actor.userId) return "owner"
   if (row.role) return row.role
-  return guestRole(actor, documentId)
-}
-
-async function guestRole(actor: Actor, documentId: string) {
   // A guest: their link's role, while the link is active and is for this
   // document. Guests never own documents or hold grants.
   const [guest] = await db

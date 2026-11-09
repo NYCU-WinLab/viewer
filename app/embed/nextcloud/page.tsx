@@ -9,8 +9,8 @@ export const dynamic = "force-dynamic"
 
 // The page Nextcloud shows in its frame (the winlab_viewer app):
 // /embed/nextcloud?path=<path in the member's files>. It opens the file at
-// once (importing it, or a new version when it changed) and goes to the
-// document. Signing in and linking Nextcloud happen in a small window,
+// once (importing it, or the document it became when the member has
+// access to it) and goes to the document. Signing in and linking Nextcloud happen in a small window,
 // since neither sign-in page may be framed.
 export default async function EmbedNextcloud({
   searchParams,
