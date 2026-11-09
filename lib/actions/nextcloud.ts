@@ -147,7 +147,7 @@ export const importNextcloudFile = defineAction({
     if (info.size > MAX_DOCUMENT_BYTES) throw new Error("檔案太大")
     // Nextcloud just showed the file to this member: their access to its
     // document is what they may do with it there, from now on.
-    await rememberAccess(actor, [
+    await rememberAccess(actor, token.user, [
       { fileId: info.fileId, access: accessFromNextcloud(token.user, info) },
     ])
     const source = {

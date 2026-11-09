@@ -201,7 +201,8 @@ export const nextcloudTokens = pgTable("nextcloud_tokens", {
 // What a member may do with a Nextcloud file, as Nextcloud said last time
 // it was asked: owner, edit or comment, or null for no access. A document
 // bound to a file takes its access only from here (lib/actions/
-// nextcloud-access.ts), and a row older than a minute is asked again.
+// nextcloud-access.ts). A row counts for under a minute, and only while
+// the member is still linked to the Nextcloud account that answered.
 export const nextcloudAccess = pgTable(
   "nextcloud_access",
   {
@@ -209,6 +210,8 @@ export const nextcloudAccess = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     fileId: text().notNull(),
+    /** The Nextcloud account whose token got this answer. */
+    nextcloudUser: text().notNull(),
     access: text().$type<"owner" | Role>(),
     checkedAt: timestamp({ withTimezone: true }).notNull(),
   },

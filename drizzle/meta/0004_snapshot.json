@@ -1,5 +1,5 @@
 {
-  "id": "b8d00a2b-4e08-4dea-98de-63636138d63d",
+  "id": "b5349221-6627-443f-ba26-a29950025e06",
   "prevId": "aa8a5b6a-c06e-4849-87ad-1984e82f2848",
   "version": "7",
   "dialect": "postgresql",
@@ -2351,6 +2351,12 @@
         },
         "file_id": {
           "name": "file_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nextcloud_user": {
+          "name": "nextcloud_user",
           "type": "text",
           "primaryKey": false,
           "notNull": true
