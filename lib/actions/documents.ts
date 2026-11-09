@@ -3,7 +3,7 @@ import { readFile, rm } from "node:fs/promises"
 import { and, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm"
 import { z } from "zod"
 
-import { accessTo, requireAccess } from "@/lib/actions/access"
+import { accessTo, atLeast, requireAccess } from "@/lib/actions/access"
 import { memberUserId } from "@/lib/actions/members"
 import { nextcloudAccessTo } from "@/lib/actions/nextcloud-access"
 import { type Actor, defineAction } from "@/lib/actions/define"
@@ -211,7 +211,8 @@ export const getDocument = defineAction({
       ...rest,
       access,
       // Where sharing is managed: in Nextcloud for a bound document.
-      nextcloudShareUrl: fileId ? nextcloudFileUrl(fileId) : null,
+      nextcloudShareUrl:
+        fileId && atLeast(access, "edit") ? nextcloudFileUrl(fileId) : null,
       versions: versions.map((v) => ({
         ...v,
         createdAt: v.createdAt.toISOString(),

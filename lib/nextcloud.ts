@@ -302,10 +302,21 @@ export async function memberFileAccess(
     for (const part of xml.split(/<\/(?:\w+:)?response>/)) {
       const fileId = tag(part, "fileid")
       if (!fileId) continue
-      found.set(fileId, {
+      const file = {
         permissions: tag(part, "permissions"),
         ownerId: unescapeXml(tag(part, "owner-id")),
-      })
+      }
+      // One file reached two ways (a team folder and a share) comes back
+      // twice: the member has every permission either gives, and it is
+      // mounted only when both are.
+      const seen = found.get(fileId)
+      if (seen) {
+        const letters = new Set(seen.permissions + file.permissions)
+        if (!seen.permissions.includes("M") || !file.permissions.includes("M"))
+          letters.delete("M")
+        file.permissions = [...letters].join("")
+      }
+      found.set(fileId, file)
     }
   }
   return found
