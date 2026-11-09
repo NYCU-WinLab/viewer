@@ -7,6 +7,7 @@ import { requireAccess } from "@/lib/actions/access"
 import { defineAction } from "@/lib/actions/define"
 import { signInGuest, signOutGuests } from "@/lib/auth/guest"
 import { db } from "@/lib/db"
+import { sendInvitation } from "@/lib/portal"
 import { documents, guestLinks, user } from "@/lib/db/schema"
 
 // Guest links: someone with edit access lets a person without a lab
@@ -28,7 +29,7 @@ export const createGuestLink = defineAction({
   name: "create_guest_link",
   title: "產生訪客連結",
   description:
-    "Makes a link that lets someone without a lab account open one document until it expires after hours (1, 24 or 168), as view (read only) or comment (also mark and write sticky notes). Needs edit access. label says who it is for. The secret in the returned url is the password: give the whole link to the guest only; it cannot be shown again.",
+    "Makes a link that lets someone without a lab account open one document until it expires after hours (1, 24 or 168), as view (read only) or comment (also mark and write sticky notes). Needs edit access. label says who it is for. email, when given, is mailed the link from the lab's address through portal.winlab.tw; mailed says whether that worked and mailError why not (the link is made either way). The secret in the returned url is the password: give the whole link to the guest only; it cannot be shown again.",
   kind: "mutation",
   input: z.object({
     id,
@@ -40,6 +41,7 @@ export const createGuestLink = defineAction({
         "有效時間只能是 1、24 或 168 小時"
       ),
     label: z.string().trim().max(80, "對象最多 80 字").optional(),
+    email: z.email("信箱格式不對").optional(),
   }),
   run: async (actor, input) => {
     await requireAccess(actor, input.id, "edit")
@@ -58,7 +60,34 @@ export const createGuestLink = defineAction({
         expiresAt,
       })
       .returning({ id: guestLinks.id })
-    return { id: link.id, url: url(secret), expiresAt }
+    const made: {
+      id: string
+      url: string
+      expiresAt: Date
+      mailed: boolean
+      mailError?: string
+    } = { id: link.id, url: url(secret), expiresAt, mailed: false }
+    if (!input.email) return made
+    const [document] = await db
+      .select({ name: documents.name })
+      .from(documents)
+      .where(eq(documents.id, input.id))
+    try {
+      await sendInvitation({
+        to: input.email,
+        url: made.url,
+        title: document?.name ?? "",
+        access: input.role,
+        expiresAt,
+      })
+      return { ...made, mailed: true }
+    } catch (error) {
+      return {
+        ...made,
+        mailed: false,
+        mailError: error instanceof Error ? error.message : "寄信失敗",
+      }
+    }
   },
 })
 
