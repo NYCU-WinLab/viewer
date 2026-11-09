@@ -111,6 +111,32 @@ export function authorizeUrl(state: string) {
   return `${base}/apps/oauth2/authorize?${query}`
 }
 
+/** A date from WebDAV as ISO text; a missing or odd one becomes epoch, so
+ * one entry cannot fail the whole folder. */
+function lastModified(text: string) {
+  const date = new Date(text)
+  return (Number.isNaN(date.getTime()) ? new Date(0) : date).toISOString()
+}
+
+/** Nextcloud refused a refresh token: the link is gone for good (revoked,
+ * or already rotated), unlike a timeout or a server error. */
+export class TokenRevoked extends Error {}
+
+/** The cookie that carries the OAuth state. On an https site a __Host-
+ * cookie, which another *.winlab.tw site cannot set for this host. */
+export function stateCookie() {
+  const secure = (process.env.BETTER_AUTH_URL ?? "").startsWith("https://")
+  return {
+    name: secure ? "__Host-nextcloud_state" : "nextcloud_state",
+    options: {
+      httpOnly: true,
+      secure,
+      sameSite: "lax" as const,
+      path: "/",
+    },
+  }
+}
+
 export type NextcloudToken = {
   accessToken: string
   refreshToken: string
@@ -131,6 +157,8 @@ async function token(params: Record<string, string>): Promise<NextcloudToken> {
     }),
     signal: AbortSignal.timeout(15_000),
   })
+  if (response.status === 400 || response.status === 401)
+    throw new TokenRevoked(`Nextcloud token failed: ${response.status}`)
   if (!response.ok) fail("token", response)
   const body = (await response.json()) as {
     access_token?: string
@@ -232,7 +260,7 @@ export async function listMemberFolder(
       path: clean,
       folder,
       size: Number(tag(block, "getcontentlength")) || 0,
-      modified: new Date(tag(block, "getlastmodified")).toISOString(),
+      modified: lastModified(tag(block, "getlastmodified")),
       type: tag(block, "getcontenttype"),
     })
   }

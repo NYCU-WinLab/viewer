@@ -13,6 +13,7 @@ import {
   listMemberFolder,
   type NextcloudToken,
   refreshToken,
+  TokenRevoked,
 } from "@/lib/nextcloud"
 import { seal, unseal } from "@/lib/seal"
 
@@ -26,9 +27,11 @@ const path = z.string().min(1).max(2000).startsWith("/")
 const id = z.uuid().transform((value) => value.toLowerCase())
 
 /** The member's token, refreshed when it has expired. Nextcloud rotates
- * the refresh token on each use, so the row stays locked meanwhile. */
+ * the refresh token on each use, so the row stays locked meanwhile. A
+ * refresh Nextcloud refuses unlinks the member (the delete commits before
+ * the error); a timeout or server error keeps the link for the next try. */
 async function tokenOf(actor: Actor): Promise<NextcloudToken> {
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const [row] = await tx
       .select()
       .from(nextcloudTokens)
@@ -45,11 +48,13 @@ async function tokenOf(actor: Actor): Promise<NextcloudToken> {
     let fresh: NextcloudToken
     try {
       fresh = await refreshToken(unseal(row.refreshToken))
-    } catch {
+    } catch (error) {
+      if (!(error instanceof TokenRevoked))
+        throw new Error("暫時連不上 Nextcloud，請稍後再試")
       await tx
         .delete(nextcloudTokens)
         .where(eq(nextcloudTokens.userId, actor.userId))
-      throw new Error("Nextcloud 連結已失效，請重新連結")
+      return null
     }
     await tx
       .update(nextcloudTokens)
@@ -62,6 +67,8 @@ async function tokenOf(actor: Actor): Promise<NextcloudToken> {
       .where(eq(nextcloudTokens.userId, actor.userId))
     return fresh
   })
+  if (!result) throw new Error("Nextcloud 連結已失效，請重新連結")
+  return result
 }
 
 export const nextcloudStatus = defineAction({
@@ -94,7 +101,11 @@ export const linkNextcloud = defineAction({
     "the code comes from Nextcloud's sign-in page in the member's browser; an agent starts linking by sending the member to /nextcloud/connect",
   input: z.object({ code: z.string().min(1).max(500) }),
   run: async (actor, { code }) => {
-    const token = await exchangeCode(code)
+    const token = await exchangeCode(code).catch((error) => {
+      if (error instanceof TokenRevoked)
+        throw new Error("Nextcloud 沒有授權，請再試一次")
+      throw error
+    })
     const values = {
       nextcloudUser: token.user,
       accessToken: seal(token.accessToken),

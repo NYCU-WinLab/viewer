@@ -12,7 +12,7 @@ import { ImportNow } from "./import-now"
 
 export const dynamic = "force-dynamic"
 
-// Where Nextcloud's "在 Viewer 打開" lands: /import/nextcloud?path=<path in
+// Where the Open in Viewer item of the Nextcloud file menu lands: /import/nextcloud?path=<path in
 // the member's files>. A member who has not linked Nextcloud links it
 // first and comes back; then one click imports the file (or opens the
 // document it became) and opens it.
