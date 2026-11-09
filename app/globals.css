@@ -31,6 +31,10 @@
   --color-marker: var(--marker);
   --color-note: var(--note);
   --color-note-foreground: var(--note-foreground);
+  --color-mark-box: var(--mark-box);
+  --color-mark-pen: var(--mark-pen);
+  --color-paper: var(--paper);
+  --color-who: var(--who);
   --color-destructive: var(--destructive);
   --color-muted-foreground: var(--muted-foreground);
   --color-muted: var(--muted);
@@ -58,7 +62,9 @@
   --warning: oklch(0.55 0.112 85);
   /* Paper colors: pages are white paper in both themes. */
   --marker: oklch(0.93 0.19 105);
-  --note: oklch(0.94 0.11 98);
+  --mark-box: oklch(0.7 0.17 235);
+  --mark-pen: oklch(0.64 0.25 15);
+  --note: oklch(0.9 0.12 95);
   --note-foreground: oklch(0.3 0.04 85);
   --border: oklch(0.89 0.005 85);
   --overlay: oklch(0.97 0.005 85 / 85%);
@@ -78,7 +84,9 @@
   --warning: oklch(0.84 0.12 85);
   /* Paper colors: pages are white paper in both themes. */
   --marker: oklch(0.93 0.19 105);
-  --note: oklch(0.94 0.11 98);
+  --mark-box: oklch(0.7 0.17 235);
+  --mark-pen: oklch(0.64 0.25 15);
+  --note: oklch(0.9 0.12 95);
   --note-foreground: oklch(0.3 0.04 85);
   --border: oklch(1 0 0 / 10%);
   --overlay: oklch(0.17 0 0 / 85%);
@@ -278,4 +286,81 @@
 }
 .textLayer.selecting .endOfContent {
   top: 0;
+}
+
+/* Sticky-note paper, one color per writer on a mark (data-paper 0 to 5),
+   and one color per member in the room (data-who 0 to 5) for cursors and
+   avatars. Pages are white paper in both themes, so these do not change
+   with the theme. */
+:root {
+  --paper: var(--note);
+  --who: var(--primary);
+}
+[data-paper="1"] { --paper: oklch(0.7 0.14 28); }
+[data-paper="2"] { --paper: oklch(0.82 0.08 235); }
+[data-paper="3"] { --paper: oklch(0.85 0.11 135); }
+[data-paper="4"] { --paper: oklch(0.8 0.1 315); }
+[data-paper="5"] { --paper: oklch(0.83 0.12 65); }
+[data-who="0"] { --who: oklch(0.55 0.2 262); }
+[data-who="1"] { --who: oklch(0.6 0.22 25); }
+[data-who="2"] { --who: oklch(0.58 0.15 160); }
+[data-who="3"] { --who: oklch(0.6 0.2 320); }
+[data-who="4"] { --who: oklch(0.65 0.16 60); }
+[data-who="5"] { --who: oklch(0.55 0.12 210); }
+
+/* A square of paper stuck at its top edge: the bottom corners lift off
+   the page, so the shadow under them is deeper than under the middle,
+   and the sides throw a faint shadow. The two lifted-corner shadows sit
+   behind the paper (z-index -1), so its wrapper sets the stacking order. */
+@utility paper-note {
+  position: relative;
+  background: var(--paper);
+  box-shadow:
+    0 1px 1px oklch(0 0 0 / 8%),
+    3px 0 6px -4px oklch(0 0 0 / 22%),
+    -3px 0 6px -4px oklch(0 0 0 / 22%);
+  &::before,
+  &::after {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    bottom: 0.875rem;
+    width: 50%;
+    height: 30%;
+    box-shadow: 0 1rem 0.75rem oklch(0 0 0 / 42%);
+  }
+  &::before {
+    left: 0.25rem;
+    transform: rotate(-4deg) skewX(-10deg);
+  }
+  &::after {
+    right: 0.25rem;
+    transform: rotate(4deg) skewX(10deg);
+  }
+}
+
+/* Notes on one mark stack up and to the right, newest on top; --i is the
+   note's place in the stack, --n how many there are. */
+@utility note-stack {
+  padding-top: calc((var(--n) - 1) * 1.25rem);
+  padding-right: calc((var(--n) - 1) * 1.5rem);
+}
+@utility note-layer {
+  z-index: var(--i);
+  transition-property: translate, scale;
+  translate: calc(var(--i) * 1.5rem) calc(var(--i) * -1.25rem);
+  &[data-raised] {
+    z-index: 100;
+    translate: calc(var(--i) * 1.5rem) calc(var(--i) * -1.25rem - 0.5rem);
+    scale: 1.03;
+  }
+}
+
+/* Another member's cursor, placed by --x and --y (fractions of its page). */
+@utility remote-cursor {
+  left: calc(var(--x) * 100%);
+  top: calc(var(--y) * 100%);
+  transition:
+    left 120ms linear,
+    top 120ms linear;
 }

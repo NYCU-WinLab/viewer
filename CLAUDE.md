@@ -18,6 +18,7 @@ viewer.winlab.tw: lab members read PDF, Word and PowerPoint documents together, 
 - **Marks are stored in page fractions** (0 to 1 from the top left), so they hold at any zoom; a highlight also keeps its quote with some context, to find it again in a newer version.
 - **Members only.** Every page calls `requireActor`, every file goes through `/files`; nothing is public.
 - **Every page updates live.** `runAction` announces each successful mutation (`lib/actions/changes.ts`, Postgres NOTIFY) and every open page refreshes through `/api/events`.
+- **Presence is not data.** Who has a document open and their cursors live in memory in `lib/presence.ts` (one server process), streamed by `/api/presence/<id>` after `get_document` checks access; nothing is stored, so it is not an action.
 - **MCP lives at `/mcp`**; discovery is under `/.well-known/` at the site root.
 - **Design** comes from ui.winlab.tw (`bunx shadcn@latest add @winlab/<item>`); its DESIGN.md is the rulebook and `bun run tokens:check` enforces the token part.
 - **Observability**: actions run in a span (`action <name>`, with `via` web or mcp); send ids and counts, never member content.

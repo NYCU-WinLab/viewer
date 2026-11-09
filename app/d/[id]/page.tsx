@@ -1,13 +1,14 @@
 import { notFound } from "next/navigation"
 
 import { DocumentActions } from "@/components/reader/document-actions"
+import { PresenceProvider, Viewers } from "@/components/reader/presence"
 import { Reader } from "@/components/reader/reader"
 import { ViewerShell } from "@/components/viewer-shell"
 import { atLeast } from "@/lib/actions/access"
 import { listAnnotations } from "@/lib/actions/annotations"
 import { runAction } from "@/lib/actions/define"
 import { getDocument } from "@/lib/actions/documents"
-import { requireActor } from "@/lib/auth/session"
+import { getSession, requireActor } from "@/lib/auth/session"
 
 export const dynamic = "force-dynamic"
 
@@ -28,29 +29,38 @@ export default async function DocumentPage({
     ? asked
     : doc.latestVersion
   const marks = await runAction(listAnnotations, actor, { id, version })
+  const session = await getSession()
+  const me = {
+    userId: actor.userId,
+    name: session?.user.name ?? "",
+    image: session?.user.image ?? null,
+  }
 
   return (
-    <ViewerShell
-      layout="wide"
-      page={{ label: doc.name, href: `/d/${id}`, tip: doc.ownerName }}
-    >
-      <Reader
-        key={version}
-        documentId={id}
-        version={version}
-        marks={marks}
-        canComment={atLeast(doc.access, "comment")}
-        canManage={atLeast(doc.access, "edit")}
-        actions={
-          <DocumentActions
-            documentId={id}
-            version={version}
-            versions={doc.versions}
-            canEdit={atLeast(doc.access, "edit")}
-            isOwner={doc.access === "owner"}
-          />
-        }
-      />
-    </ViewerShell>
+    <PresenceProvider documentId={id} me={me}>
+      <ViewerShell
+        layout="wide"
+        page={{ label: doc.name, href: `/d/${id}`, tip: doc.ownerName }}
+        actions={<Viewers />}
+      >
+        <Reader
+          key={version}
+          documentId={id}
+          version={version}
+          marks={marks}
+          canComment={atLeast(doc.access, "comment")}
+          canManage={atLeast(doc.access, "edit")}
+          actions={
+            <DocumentActions
+              documentId={id}
+              version={version}
+              versions={doc.versions}
+              canEdit={atLeast(doc.access, "edit")}
+              isOwner={doc.access === "owner"}
+            />
+          }
+        />
+      </ViewerShell>
+    </PresenceProvider>
   )
 }

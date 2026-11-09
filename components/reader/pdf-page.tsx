@@ -3,7 +3,9 @@
 import type { PDFDocumentProxy } from "pdfjs-dist"
 import * as React from "react"
 
+import { RemoteCursor } from "@/components/reader/presence"
 import type { Draft, Mark, Mode } from "@/components/reader/types"
+import type { Viewer } from "@/lib/presence"
 import { cn } from "@/lib/utils"
 
 type Size = { width: number; height: number }
@@ -52,6 +54,7 @@ export function PdfPage({
   selected,
   onSelect,
   onDraft,
+  cursors,
 }: {
   pdf: PDFDocumentProxy
   number: number
@@ -64,6 +67,8 @@ export function PdfPage({
   selected: string | null
   onSelect: (id: string) => void
   onDraft: (draft: Draft) => void
+  /** Other members' pointers on this page. */
+  cursors: (Viewer & { cursor: NonNullable<Viewer["cursor"]> })[]
 }) {
   const frame = React.useRef<HTMLDivElement>(null)
   const canvas = React.useRef<HTMLCanvasElement>(null)
@@ -219,22 +224,26 @@ export function PdfPage({
             height={Math.abs(drawing[1][1] - drawing[0][1])}
             {...corner}
             vectorEffect="non-scaling-stroke"
-            className="fill-primary/10 stroke-primary stroke-2 mix-blend-multiply"
+            className="fill-mark-box/10 stroke-mark-box stroke-3"
           />
         )}
         {drawing && mode === "pen" && (
           <path
             d={strokePath(drawing)}
             vectorEffect="non-scaling-stroke"
-            className="fill-none stroke-destructive stroke-2"
+            className="fill-none stroke-mark-pen stroke-3"
           />
         )}
       </svg>
+      {cursors.map((viewer) => (
+        <RemoteCursor key={viewer.conn} viewer={viewer} />
+      ))}
     </div>
   )
 }
 
-// One mark: a highlighter's lines, a box or a pen stroke. Resolved marks
+// One mark: a highlighter's lines (fluorescent yellow), a box (blue) or a
+// pen stroke (red), the box and the pen equally thick. Resolved marks
 // fade; the selected one is drawn heavier.
 function MarkShape({
   mark,
@@ -271,8 +280,8 @@ function MarkShape({
           d={d}
           vectorEffect="non-scaling-stroke"
           className={cn(
-            "fill-none stroke-destructive",
-            selected ? "stroke-4" : "stroke-2"
+            "fill-none stroke-mark-pen",
+            selected ? "stroke-5" : "stroke-3"
           )}
         />
       </g>
@@ -298,8 +307,8 @@ function MarkShape({
                   selected && "stroke-marker stroke-4"
                 )
               : cn(
-                  "fill-primary/5 stroke-primary mix-blend-multiply",
-                  selected ? "stroke-4" : "stroke-2"
+                  "fill-mark-box/5 stroke-mark-box",
+                  selected ? "stroke-5" : "stroke-3"
                 )
           }
         />
