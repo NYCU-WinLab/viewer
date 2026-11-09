@@ -1,9 +1,13 @@
-import { and, desc, eq, isNotNull, isNull, or, sql } from "drizzle-orm"
+import { and, desc, eq, isNotNull, isNull, sql } from "drizzle-orm"
 import { z } from "zod"
 
 import { accessTo, requireAccess } from "@/lib/actions/access"
 import { type Actor, defineAction } from "@/lib/actions/define"
-import { MAX_DOCUMENT_BYTES, storeVersion } from "@/lib/actions/documents"
+import {
+  MAX_DOCUMENT_BYTES,
+  storeVersion,
+  type Tx,
+} from "@/lib/actions/documents"
 import { db } from "@/lib/db"
 import {
   documentGrants,
@@ -191,47 +195,69 @@ export const importNextcloudFile = defineAction({
       etag: info.etag,
       fileId: info.fileId,
     }
-    const store = async (documentId?: string) => {
+    const store = async (documentId?: string, within?: Tx) => {
       const file = await downloadMemberFile(
         token,
         input.path,
-        MAX_DOCUMENT_BYTES
+        MAX_DOCUMENT_BYTES,
+        info.etag || undefined
       )
       const stored = await storeVersion(actor, {
         body: file.body,
         fileName,
         documentId,
+        within,
         nextcloud: { ...source, etag: file.etag || info.etag },
       })
       return { ...stored, unchanged: false }
     }
     if (input.documentId) return store(input.documentId)
 
-    // One import of a file at a time, so two members opening it together
-    // add one version, not two.
-    return db.transaction(async (tx) => {
-      await tx.execute(
-        sql`select pg_advisory_xact_lock(hashtext(${"nextcloud:" + info.fileId}))`
-      )
-      // The document this file became: by its Nextcloud id, or (imported
-      // before ids were kept) by this member's path.
-      const [doc] = await tx
-        .select({ id: documents.id, fileId: documents.nextcloudFileId })
-        .from(documents)
-        .where(
-          or(
-            eq(documents.nextcloudFileId, info.fileId),
-            and(
-              isNull(documents.nextcloudFileId),
-              eq(documents.nextcloudUser, token.user),
-              eq(documents.nextcloudPath, input.path)
-            )
+    // One import of a file at a time, so members opening it together add
+    // one version, not one each. A member who finds it busy waits without
+    // holding a connection, and everything below runs on the one
+    // transaction that holds the lock.
+    for (let attempt = 0; attempt < 120; attempt++) {
+      const result = await db.transaction(async (tx) => {
+        const [{ locked }] = (
+          await tx.execute<{ locked: boolean }>(
+            sql`select pg_try_advisory_xact_lock(hashtext(${"nextcloud:" + info.fileId})) as locked`
           )
-        )
+        ).rows
+        if (!locked) return null
+        return importLocked(tx)
+      })
+      if (result) return result
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+    }
+    throw new Error("這份檔案正在匯入，請稍後再打開")
+
+    async function importLocked(tx: Tx) {
+      // The document this file became: by its Nextcloud id, else (imported
+      // before ids were kept) by this member's path.
+      const [byId] = await tx
+        .select({ id: documents.id })
+        .from(documents)
+        .where(eq(documents.nextcloudFileId, info.fileId))
         .orderBy(desc(documents.createdAt))
         .limit(1)
-      if (!doc) return store()
-      if (!doc.fileId)
+      const [byPath] = byId
+        ? []
+        : await tx
+            .select({ id: documents.id })
+            .from(documents)
+            .where(
+              and(
+                isNull(documents.nextcloudFileId),
+                eq(documents.nextcloudUser, token.user),
+                eq(documents.nextcloudPath, input.path)
+              )
+            )
+            .orderBy(desc(documents.createdAt))
+            .limit(1)
+      const doc = byId ?? byPath
+      if (!doc) return store(undefined, tx)
+      if (byPath)
         await tx
           .update(documents)
           .set({ nextcloudFileId: info.fileId })
@@ -245,10 +271,7 @@ export const importNextcloudFile = defineAction({
       // The newest version that came from Nextcloud tells whether the file
       // changed; a version uploaded by hand in between does not count.
       const [latest] = await tx
-        .select({
-          number: documentVersions.number,
-          etag: documentVersions.nextcloudEtag,
-        })
+        .select({ etag: documentVersions.nextcloudEtag })
         .from(documentVersions)
         .where(
           and(
@@ -265,7 +288,7 @@ export const importNextcloudFile = defineAction({
           .where(eq(documents.id, doc.id))
         return { id: doc.id, version: current.number, unchanged: true }
       }
-      return store(doc.id)
-    })
+      return store(doc.id, tx)
+    }
   },
 })

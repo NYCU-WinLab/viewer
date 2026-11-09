@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 
@@ -24,7 +25,7 @@ export function EmbedPopup({ href, label }: { href: string; label: string }) {
           "viewer-sign-in",
           "popup,width=520,height=720"
         )
-        if (!popup) location.href = href
+        if (!popup) toast.error("請允許這個網站開新視窗，再按一次")
       }}
     >
       {label}

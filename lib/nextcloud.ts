@@ -310,16 +310,23 @@ export async function listMemberFolder(
   )
 }
 
-/** Downloads one of the member's files, up to maxBytes, with its ETag. */
+/** Downloads one of the member's files, up to maxBytes, with its ETag.
+ * With etag, only that content: a file changed or put in its place since
+ * memberFileInfo is refused, so it never lands in the wrong document. */
 export async function downloadMemberFile(
   token: NextcloudToken,
   path: string,
-  maxBytes: number
+  maxBytes: number,
+  etag?: string
 ) {
   const response = await fetch(memberUrl(token.user, path), {
-    headers: { authorization: `Bearer ${token.accessToken}` },
+    headers: {
+      authorization: `Bearer ${token.accessToken}`,
+      ...(etag ? { "if-match": `"${etag}"` } : {}),
+    },
     signal: AbortSignal.timeout(120_000),
   })
+  if (response.status === 412) throw new Error("檔案剛被改過，請再打開一次")
   if (response.status === 404) throw new Error("找不到這個檔案")
   if (!response.ok || !response.body) fail("GET", response)
   if (Number(response.headers.get("content-length")) > maxBytes)
