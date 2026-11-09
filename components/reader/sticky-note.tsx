@@ -128,35 +128,13 @@ export function StickyNote({
   }
 
   const markActions = (
-    <>
-      {canComment && (
-        <ContextMenuItem
-          onClick={async () => {
-            if (
-              await attempt(
-                resolve({ id: mark.id, resolved: !mark.resolvedAt })
-              )
-            )
-              onChanged()
-          }}
-        >
-          {mark.resolvedAt ? "重新打開" : "已處理"}
-        </ContextMenuItem>
-      )}
-      {(mark.mine || canManage) && (
-        <ContextMenuItem
-          variant="destructive"
-          onClick={async () => {
-            if (await attempt(unmark({ id: mark.id }))) {
-              onClose()
-              onChanged()
-            }
-          }}
-        >
-          刪除標記
-        </ContextMenuItem>
-      )}
-    </>
+    <MarkActions
+      mark={mark}
+      canComment={canComment}
+      canManage={canManage}
+      onDeleted={onClose}
+      onChanged={onChanged}
+    />
   )
 
   return (
@@ -251,6 +229,54 @@ export function StickyNote({
         </PopoverPrimitive.Positioner>
       </PopoverPrimitive.Portal>
     </PopoverPrimitive.Root>
+  )
+}
+
+/** The mark's own menu items: resolve or reopen it, delete it. Shared by
+ * the sticky notes' menu and the mark's (right click on the mark). */
+export function MarkActions({
+  mark,
+  canComment,
+  canManage,
+  onDeleted,
+  onChanged,
+}: {
+  mark: Mark
+  canComment: boolean
+  canManage: boolean
+  onDeleted?: () => void
+  onChanged: () => void
+}) {
+  return (
+    <>
+      {canComment && (
+        <ContextMenuItem
+          onClick={async () => {
+            if (
+              await attempt(
+                resolve({ id: mark.id, resolved: !mark.resolvedAt })
+              )
+            )
+              onChanged()
+          }}
+        >
+          {mark.resolvedAt ? "重新打開" : "已處理"}
+        </ContextMenuItem>
+      )}
+      {(mark.mine || canManage) && (
+        <ContextMenuItem
+          variant="destructive"
+          onClick={async () => {
+            if (await attempt(unmark({ id: mark.id }))) {
+              onDeleted?.()
+              onChanged()
+            }
+          }}
+        >
+          刪除標記
+        </ContextMenuItem>
+      )}
+    </>
   )
 }
 
