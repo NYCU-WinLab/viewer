@@ -15,6 +15,13 @@
       "when": 1794192463484,
       "tag": "0001_lyrical_spectrum",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794195127761,
+      "tag": "0002_white_whiplash",
+      "breakpoints": true
     }
   ]
 }

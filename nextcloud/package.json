@@ -1,0 +1,11 @@
+{
+  "name": "winlab-viewer-nextcloud",
+  "private": true,
+  "scripts": {
+    "build": "esbuild winlab_viewer/src/main.js --bundle --minify --format=iife --target=es2020 --outfile=winlab_viewer/js/winlab_viewer-main.js"
+  },
+  "devDependencies": {
+    "@nextcloud/files": "4.1.1",
+    "esbuild": "0.25.12"
+  }
+}

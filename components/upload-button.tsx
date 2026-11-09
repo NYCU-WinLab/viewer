@@ -6,6 +6,7 @@ import { toast } from "sonner"
 
 import { cornerLinkClassName } from "@/components/app-shell"
 import { FileUpload } from "@/components/file-upload"
+import { NextcloudPicker } from "@/components/nextcloud-picker"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -14,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 export const ACCEPT = ".pdf,.docx,.pptx"
 const MAX_BYTES = 100 * 1024 * 1024
@@ -35,9 +37,33 @@ export async function uploadFile(file: File, documentId?: string) {
   return result as { id: string; version: number }
 }
 
-/** The file picker and its submit button, for a new document or, with
- * documentId, a new version. */
+/** Where the file comes from: this computer or the member's Nextcloud,
+ * for a new document or, with documentId, a new version. */
 export function UploadForm({
+  documentId,
+  onDone,
+}: {
+  documentId?: string
+  onDone: (result: { id: string; version: number }) => void
+}) {
+  return (
+    <Tabs defaultValue="computer" className="flex flex-col gap-6">
+      <TabsList>
+        <TabsTrigger value="computer">這台電腦</TabsTrigger>
+        <TabsTrigger value="nextcloud">Nextcloud</TabsTrigger>
+      </TabsList>
+      <TabsContent value="computer">
+        <ComputerUpload documentId={documentId} onDone={onDone} />
+      </TabsContent>
+      <TabsContent value="nextcloud">
+        <NextcloudPicker documentId={documentId} onDone={onDone} />
+      </TabsContent>
+    </Tabs>
+  )
+}
+
+/** The file picker and its submit button. */
+function ComputerUpload({
   documentId,
   onDone,
 }: {

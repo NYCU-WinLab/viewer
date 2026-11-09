@@ -5,7 +5,7 @@ import { z } from "zod"
 
 import { accessTo, requireAccess } from "@/lib/actions/access"
 import { memberUserId } from "@/lib/actions/members"
-import { defineAction } from "@/lib/actions/define"
+import { type Actor, defineAction } from "@/lib/actions/define"
 import { toPdf } from "@/lib/convert"
 import { db } from "@/lib/db"
 import {
@@ -186,66 +186,96 @@ export const uploadDocument = defineAction({
   }),
   run: async (actor, input) => {
     try {
-      const kind = kindOf(input.fileName)
       if (input.documentId) await requireAccess(actor, input.documentId, "edit")
       const body = new Uint8Array(await readFile(input.file))
-      if (body.byteLength > MAX_DOCUMENT_BYTES) throw new Error("檔案太大")
-      const pdf = kind === "pdf" ? body : await toPdf(kind, body)
-
-      // A new document gets its row first (with no version yet, so nobody
-      // lists it), then the files, then the version.
-      const documentId =
-        input.documentId ??
-        (
-          await db
-            .insert(documents)
-            .values({ name: baseName(input.fileName), ownerId: actor.userId })
-            .returning({ id: documents.id })
-        )[0].id
-      try {
-        return await db.transaction(async (tx) => {
-          const [doc] = await tx
-            .update(documents)
-            .set({
-              latestVersion: sql`${documents.latestVersion} + 1`,
-              updatedAt: new Date(),
-            })
-            .where(eq(documents.id, documentId))
-            .returning({ number: documents.latestVersion })
-          await putDocumentFiles(documentId, [
-            ...(kind === "pdf"
-              ? []
-              : [
-                  {
-                    name: originalFile(doc.number, kind),
-                    body,
-                    type: "application/octet-stream",
-                  },
-                ]),
-            { name: pdfFile(doc.number), body: pdf, type: "application/pdf" },
-          ])
-          await tx.insert(documentVersions).values({
-            documentId,
-            number: doc.number,
-            kind,
-            fileName: input.fileName,
-            size: body.byteLength,
-            uploadedBy: actor.userId,
-          })
-          return { id: documentId, version: doc.number }
-        })
-      } catch (error) {
-        if (!input.documentId) {
-          await db.delete(documents).where(eq(documents.id, documentId))
-          await deleteDocumentFiles(documentId).catch(() => {})
-        }
-        throw error
-      }
+      return await storeVersion(actor, {
+        body,
+        fileName: input.fileName,
+        documentId: input.documentId,
+      })
     } finally {
       await rm(input.file, { force: true })
     }
   },
 })
+
+/**
+ * Stores a file as a new document, or with documentId as the next version
+ * of one (the caller has checked edit access). docx and pptx become PDF
+ * first. A file from Nextcloud keeps where it came from, so importing it
+ * again finds this document. Used by upload_document and
+ * import_nextcloud_file.
+ */
+export async function storeVersion(
+  actor: Actor,
+  input: {
+    body: Uint8Array
+    fileName: string
+    documentId?: string
+    nextcloud?: { user: string; path: string; etag: string }
+  }
+) {
+  const { body } = input
+  const kind = kindOf(input.fileName)
+  if (body.byteLength > MAX_DOCUMENT_BYTES) throw new Error("檔案太大")
+  const pdf = kind === "pdf" ? body : await toPdf(kind, body)
+
+  // A new document gets its row first (with no version yet, so nobody
+  // lists it), then the files, then the version.
+  const documentId =
+    input.documentId ??
+    (
+      await db
+        .insert(documents)
+        .values({
+          name: baseName(input.fileName),
+          ownerId: actor.userId,
+          nextcloudUser: input.nextcloud?.user,
+          nextcloudPath: input.nextcloud?.path,
+        })
+        .returning({ id: documents.id })
+    )[0].id
+  try {
+    return await db.transaction(async (tx) => {
+      const [doc] = await tx
+        .update(documents)
+        .set({
+          latestVersion: sql`${documents.latestVersion} + 1`,
+          updatedAt: new Date(),
+        })
+        .where(eq(documents.id, documentId))
+        .returning({ number: documents.latestVersion })
+      await putDocumentFiles(documentId, [
+        ...(kind === "pdf"
+          ? []
+          : [
+              {
+                name: originalFile(doc.number, kind),
+                body,
+                type: "application/octet-stream",
+              },
+            ]),
+        { name: pdfFile(doc.number), body: pdf, type: "application/pdf" },
+      ])
+      await tx.insert(documentVersions).values({
+        documentId,
+        number: doc.number,
+        kind,
+        fileName: input.fileName,
+        size: body.byteLength,
+        nextcloudEtag: input.nextcloud?.etag,
+        uploadedBy: actor.userId,
+      })
+      return { id: documentId, version: doc.number }
+    })
+  } catch (error) {
+    if (!input.documentId) {
+      await db.delete(documents).where(eq(documents.id, documentId))
+      await deleteDocumentFiles(documentId).catch(() => {})
+    }
+    throw error
+  }
+}
 
 export const renameDocument = defineAction({
   name: "rename_document",

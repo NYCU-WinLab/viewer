@@ -1,6 +1,6 @@
-import { defineConfig, globalIgnores } from "eslint/config";
-import nextVitals from "eslint-config-next/core-web-vitals";
-import nextTs from "eslint-config-next/typescript";
+import { defineConfig, globalIgnores } from "eslint/config"
+import nextVitals from "eslint-config-next/core-web-vitals"
+import nextTs from "eslint-config-next/typescript"
 
 const eslintConfig = defineConfig([
   ...nextVitals,
@@ -14,7 +14,10 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // pdf.js assets, copied in by scripts/copy-pdfjs.ts.
     "public/pdfjs/**",
+    // The Nextcloud app's build output and its own dependencies.
+    "nextcloud/node_modules/**",
+    "nextcloud/winlab_viewer/js/**",
   ]),
-]);
+])
 
-export default eslintConfig;
+export default eslintConfig

@@ -27,6 +27,13 @@ import {
   revokeGuestLink,
 } from "@/lib/actions/guests"
 import { listMembers } from "@/lib/actions/members"
+import {
+  importNextcloudFile,
+  linkNextcloud,
+  listNextcloudFiles,
+  nextcloudStatus,
+  unlinkNextcloud,
+} from "@/lib/actions/nextcloud"
 import { whoami } from "@/lib/actions/users"
 
 /** Every action, in the order MCP lists them. */
@@ -54,4 +61,9 @@ export const actions: Action[] = [
   revokeGuestLink,
   guestLinkInfo,
   joinAsGuest,
+  nextcloudStatus,
+  linkNextcloud,
+  unlinkNextcloud,
+  listNextcloudFiles,
+  importNextcloudFile,
 ]
