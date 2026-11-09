@@ -7,11 +7,13 @@ import * as React from "react"
 import { toast } from "sonner"
 
 import {
+  checkNextcloud,
   inviteGuest,
   loadGuestLinks,
   loadMembers,
   loadShares,
   share,
+  syncNextcloud,
   uninviteGuest,
   unshare,
 } from "@/app/actions"
@@ -62,16 +64,15 @@ export function DocumentActions({
   versions,
   canEdit,
   isOwner,
-  nextcloudShareUrl,
+  nextcloud,
 }: {
   documentId: string
   version: number
   versions: Version[]
   canEdit: boolean
   isOwner: boolean
-  /** Set for a document bound to a Nextcloud file: members are shared
-   * there, and only guest links here. */
-  nextcloudShareUrl: string | null
+  /** Bound to a Nextcloud file: editors can check it for a newer version. */
+  nextcloud: boolean
 }) {
   const router = useRouter()
   const [dialog, setDialog] = React.useState<"upload" | "share" | null>(null)
@@ -107,6 +108,12 @@ export function DocumentActions({
               </li>
             ))}
           </ul>
+          {canEdit && nextcloud && (
+            <NextcloudSync
+              documentId={documentId}
+              onSynced={(next) => router.push(`/d/${documentId}?v=${next}`)}
+            />
+          )}
           {canEdit && (
             <Button
               variant="ghost"
@@ -151,29 +158,64 @@ export function DocumentActions({
           </DialogHeader>
           {dialog === "share" && (
             <>
-              {nextcloudShareUrl ? (
-                <Button
-                  variant="outline"
-                  className="self-start"
-                  render={
-                    <a
-                      href={nextcloudShareUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                    />
-                  }
-                >
-                  在 Nextcloud 分享
-                </Button>
-              ) : (
-                <SharePanel documentId={documentId} isOwner={isOwner} />
-              )}
+              <SharePanel documentId={documentId} isOwner={isOwner} />
               <GuestPanel documentId={documentId} />
             </>
           )}
         </DialogContent>
       </Dialog>
     </>
+  )
+}
+
+// One button: check the bound Nextcloud file, then sync it when it
+// changed. Checking asks Nextcloud with the member's own linked account.
+function NextcloudSync({
+  documentId,
+  onSynced,
+}: {
+  documentId: string
+  onSynced: (version: number) => void
+}) {
+  const [state, setState] = React.useState<
+    "idle" | "checking" | "changed" | "syncing"
+  >("idle")
+  const check = async () => {
+    setState("checking")
+    const result = await checkNextcloud({ id: documentId })
+    if (!result.data) {
+      setState("idle")
+      return toast.error(result.error ?? "檢查失敗")
+    }
+    if (result.data.status === "changed") return setState("changed")
+    setState("idle")
+    if (result.data.status === "current") toast.success("已是最新版本")
+    else toast.error("你的 Nextcloud 找不到這份檔案")
+  }
+  const sync = async () => {
+    setState("syncing")
+    const result = await syncNextcloud({ id: documentId })
+    setState("idle")
+    if (!result.data) return toast.error(result.error ?? "同步失敗")
+    if (result.data.unchanged) return toast.success("已是最新版本")
+    toast.success(`已同步為 v${result.data.version}`)
+    onSynced(result.data.version)
+  }
+  return (
+    <Button
+      variant="ghost"
+      className={cn("justify-start", state === "changed" && "text-primary")}
+      disabled={state === "checking" || state === "syncing"}
+      onClick={state === "changed" ? sync : check}
+    >
+      {state === "checking"
+        ? "檢查中…"
+        : state === "syncing"
+          ? "轉檔中…"
+          : state === "changed"
+            ? "Nextcloud 有新版本，同步"
+            : "檢查 Nextcloud 版本"}
+    </Button>
   )
 }
 

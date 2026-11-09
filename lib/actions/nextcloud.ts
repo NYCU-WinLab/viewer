@@ -1,12 +1,8 @@
 import { and, desc, eq, isNotNull, isNull, sql } from "drizzle-orm"
 import { z } from "zod"
 
-import { requireAccess } from "@/lib/actions/access"
+import { accessTo, requireAccess } from "@/lib/actions/access"
 import { defineAction } from "@/lib/actions/define"
-import {
-  accessFromNextcloud,
-  rememberAccess,
-} from "@/lib/actions/nextcloud-access"
 import { tokenOf } from "@/lib/actions/nextcloud-token"
 import {
   MAX_DOCUMENT_BYTES,
@@ -17,14 +13,15 @@ import { db } from "@/lib/db"
 import {
   documents,
   documentVersions,
-  nextcloudAccess,
   nextcloudTokens,
+  user,
 } from "@/lib/db/schema"
 import {
   canLinkNextcloud,
   downloadMemberFile,
   exchangeCode,
   listMemberFolder,
+  memberFileById,
   memberFileInfo,
   TokenRevoked,
 } from "@/lib/nextcloud"
@@ -32,8 +29,10 @@ import { seal } from "@/lib/seal"
 
 // A member's own Nextcloud files: link the account once (OAuth 2 through
 // /nextcloud/connect), then browse folders and import a PDF, Word or
-// PowerPoint file as a document. Importing the same file again adds a
-// version to the document it became, when the file has changed.
+// PowerPoint file as a document. Nextcloud only binds the file to its
+// document at import; who may open the document is decided in the viewer
+// like any other. A newer file becomes a version only when an editor
+// checks and syncs it.
 
 const KINDS = /\.(pdf|docx|pptx)$/i
 const path = z.string().min(1).max(2000).startsWith("/")
@@ -81,17 +80,10 @@ export const linkNextcloud = defineAction({
       expiresAt: token.expiresAt,
       updatedAt: new Date(),
     }
-    // Another Nextcloud account may see other files: forget what the old
-    // link was allowed.
-    await db.transaction(async (tx) => {
-      await tx
-        .insert(nextcloudTokens)
-        .values({ userId: actor.userId, ...values })
-        .onConflictDoUpdate({ target: nextcloudTokens.userId, set: values })
-      await tx
-        .delete(nextcloudAccess)
-        .where(eq(nextcloudAccess.userId, actor.userId))
-    })
+    await db
+      .insert(nextcloudTokens)
+      .values({ userId: actor.userId, ...values })
+      .onConflictDoUpdate({ target: nextcloudTokens.userId, set: values })
     return { user: token.user }
   },
 })
@@ -100,18 +92,13 @@ export const unlinkNextcloud = defineAction({
   name: "unlink_nextcloud",
   title: "解除 Nextcloud 連結",
   description:
-    "Forgets the member's Nextcloud tokens. Documents already imported stay, but the member loses the documents they could open through Nextcloud until they link again.",
+    "Forgets the member's Nextcloud tokens. Documents already imported stay, with the same access.",
   kind: "mutation",
   input: z.object({}),
   run: async (actor) => {
-    await db.transaction(async (tx) => {
-      await tx
-        .delete(nextcloudTokens)
-        .where(eq(nextcloudTokens.userId, actor.userId))
-      await tx
-        .delete(nextcloudAccess)
-        .where(eq(nextcloudAccess.userId, actor.userId))
-    })
+    await db
+      .delete(nextcloudTokens)
+      .where(eq(nextcloudTokens.userId, actor.userId))
     return { unlinked: true }
   },
 })
@@ -134,7 +121,7 @@ export const importNextcloudFile = defineAction({
   name: "import_nextcloud_file",
   title: "從 Nextcloud 匯入",
   description:
-    "Opens a PDF, Word or PowerPoint file from the member's Nextcloud by path as a document. A file is bound to one document by its Nextcloud file id, so a rename, a move or another member opening the same shared file finds that document. Such a document is shared in Nextcloud only: reading the file there gives comment access, writing it edit, owning it owner. When the file changed since its last import, its new content becomes the next version first. With documentId the file becomes the next version of that document instead (needs edit access). Returns the document id, its version and unchanged when nothing new was stored.",
+    "Opens a PDF, Word or PowerPoint file from the member's Nextcloud by path as a document the member owns. A file is bound to one document by its Nextcloud file id: importing it again, after a rename or a move, opens that document when the member has access to it in the viewer, and is refused otherwise (its owner shares it with share_document). Importing never adds a version; check_nextcloud_version and sync_nextcloud_version do. With documentId the file becomes the next version of that document instead (needs edit access). Returns the document id, its version and unchanged when nothing new was stored.",
   kind: "mutation",
   input: z.object({ path, documentId: id.optional() }),
   run: async (actor, input) => {
@@ -145,11 +132,6 @@ export const importNextcloudFile = defineAction({
     const token = await tokenOf(actor)
     const info = await memberFileInfo(token, input.path)
     if (info.size > MAX_DOCUMENT_BYTES) throw new Error("檔案太大")
-    // Nextcloud just showed the file to this member: their access to its
-    // document is what they may do with it there, from now on.
-    await rememberAccess(actor, token.user, [
-      { fileId: info.fileId, access: accessFromNextcloud(token.user, info) },
-    ])
     const source = {
       user: token.user,
       path: input.path,
@@ -174,8 +156,8 @@ export const importNextcloudFile = defineAction({
     }
     if (input.documentId) return store(input.documentId)
 
-    // One import of a file at a time, so members opening it together add
-    // one version, not one each. A member who finds it busy waits without
+    // One import of a file at a time, so members opening it together make
+    // one document, not one each. A member who finds it busy waits without
     // holding a connection, and everything below runs on the one
     // transaction that holds the lock.
     for (let attempt = 0; attempt < 120; attempt++) {
@@ -223,27 +205,124 @@ export const importNextcloudFile = defineAction({
           .update(documents)
           .set({ nextcloudFileId: info.fileId })
           .where(eq(documents.id, doc.id))
-      // The newest version that came from Nextcloud tells whether the file
-      // changed; a version uploaded by hand in between does not count.
-      const [latest] = await tx
-        .select({ etag: documentVersions.nextcloudEtag })
-        .from(documentVersions)
-        .where(
-          and(
-            eq(documentVersions.documentId, doc.id),
-            isNotNull(documentVersions.nextcloudEtag)
-          )
-        )
-        .orderBy(desc(documentVersions.number))
-        .limit(1)
-      if (latest && info.etag && latest.etag === info.etag) {
-        const [current] = await tx
-          .select({ number: documents.latestVersion })
+      // Access is the viewer's: the file is already a document, and the
+      // member opens it only when it is shared with them here. Nextcloud
+      // just showed them the file, so naming its owner tells them nothing
+      // they could not see there.
+      if (!(await accessTo(actor, doc.id))) {
+        const [owner] = await tx
+          .select({ name: user.name })
           .from(documents)
+          .innerJoin(user, eq(user.id, documents.ownerId))
           .where(eq(documents.id, doc.id))
-        return { id: doc.id, version: current.number, unchanged: true }
+        throw new Error(
+          `這份檔案已經在 Viewer，請${owner?.name ?? "擁有者"}共用給你`
+        )
       }
-      return store(doc.id, tx)
+      const [current] = await tx
+        .select({ number: documents.latestVersion })
+        .from(documents)
+        .where(eq(documents.id, doc.id))
+      return { id: doc.id, version: current.number, unchanged: true }
     }
+  },
+})
+
+/** The bound file's id and the ETag of its newest version that came from
+ * Nextcloud (a version uploaded by hand in between does not count). */
+async function boundFile(documentId: string) {
+  const [doc] = await db
+    .select({ fileId: documents.nextcloudFileId })
+    .from(documents)
+    .where(eq(documents.id, documentId))
+  if (!doc?.fileId) throw new Error("這份文件沒有綁定 Nextcloud 檔案")
+  const [latest] = await db
+    .select({ etag: documentVersions.nextcloudEtag })
+    .from(documentVersions)
+    .where(
+      and(
+        eq(documentVersions.documentId, documentId),
+        isNotNull(documentVersions.nextcloudEtag)
+      )
+    )
+    .orderBy(desc(documentVersions.number))
+    .limit(1)
+  return { fileId: doc.fileId, etag: latest?.etag ?? null }
+}
+
+export const checkNextcloudVersion = defineAction({
+  name: "check_nextcloud_version",
+  title: "檢查 Nextcloud 版本",
+  description:
+    "For a document bound to a Nextcloud file: whether the file in Nextcloud still matches the document's last version from it. Asks Nextcloud with the member's own linked account. Returns status current, changed (sync_nextcloud_version stores it), or missing (the member cannot reach the file), with the file's path and when it changed. Needs edit access.",
+  kind: "query",
+  input: z.object({ id }),
+  run: async (actor, { id }) => {
+    await requireAccess(actor, id, "edit")
+    const bound = await boundFile(id)
+    const token = await tokenOf(actor)
+    const file = await memberFileById(token, bound.fileId)
+    if (!file) return { status: "missing" as const, path: null, modified: null }
+    return {
+      status:
+        bound.etag && file.etag === bound.etag
+          ? ("current" as const)
+          : ("changed" as const),
+      path: file.path,
+      modified: file.modified,
+    }
+  },
+})
+
+export const syncNextcloudVersion = defineAction({
+  name: "sync_nextcloud_version",
+  title: "同步 Nextcloud 版本",
+  description:
+    "For a document bound to a Nextcloud file: stores the file's current content as the document's next version when it changed since the last one from Nextcloud. Uses the member's own linked account. Returns the version and unchanged when the file was already current. Needs edit access.",
+  kind: "mutation",
+  input: z.object({ id }),
+  run: async (actor, { id }) => {
+    await requireAccess(actor, id, "edit")
+    const bound = await boundFile(id)
+    const token = await tokenOf(actor)
+    const file = await memberFileById(token, bound.fileId)
+    if (!file) throw new Error("你的 Nextcloud 找不到這份檔案")
+    const fileName = file.path.split("/").pop() ?? ""
+    if (!KINDS.test(fileName))
+      throw new Error("這份檔案已不是 PDF、Word 或 PowerPoint")
+    if (file.size > MAX_DOCUMENT_BYTES) throw new Error("檔案太大")
+    // One sync of a document at a time; a second one that finds the lock
+    // taken, or the file already stored, adds nothing.
+    return db.transaction(async (tx) => {
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtext(${"nextcloud:" + bound.fileId}))`
+      )
+      const again = await boundFile(id)
+      const [current] = await tx
+        .select({ number: documents.latestVersion })
+        .from(documents)
+        .where(eq(documents.id, id))
+      if (again.etag && again.etag === file.etag)
+        return { id, version: current.number, unchanged: true }
+      const body = await downloadMemberFile(
+        token,
+        file.path,
+        MAX_DOCUMENT_BYTES,
+        file.etag || undefined
+      )
+      const stored = await storeVersion(actor, {
+        body: body.body,
+        fileName,
+        documentId: id,
+        within: tx,
+        nextcloud: {
+          user: token.user,
+          path: file.path,
+          etag: body.etag || file.etag,
+          fileId: bound.fileId,
+        },
+      })
+      return { ...stored, unchanged: false }
+    })
   },
 })

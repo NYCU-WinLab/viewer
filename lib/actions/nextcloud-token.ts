@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm"
 
 import type { Actor } from "@/lib/actions/define"
 import { db } from "@/lib/db"
-import { nextcloudAccess, nextcloudTokens } from "@/lib/db/schema"
+import { nextcloudTokens } from "@/lib/db/schema"
 import {
   type NextcloudToken,
   refreshToken,
@@ -38,9 +38,6 @@ export async function tokenOf(actor: Actor): Promise<NextcloudToken> {
       await tx
         .delete(nextcloudTokens)
         .where(eq(nextcloudTokens.userId, actor.userId))
-      await tx
-        .delete(nextcloudAccess)
-        .where(eq(nextcloudAccess.userId, actor.userId))
       return null
     }
     if (row.expiresAt.getTime() > Date.now())
@@ -59,9 +56,6 @@ export async function tokenOf(actor: Actor): Promise<NextcloudToken> {
       await tx
         .delete(nextcloudTokens)
         .where(eq(nextcloudTokens.userId, actor.userId))
-      await tx
-        .delete(nextcloudAccess)
-        .where(eq(nextcloudAccess.userId, actor.userId))
       return null
     }
     await tx

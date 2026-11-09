@@ -25,9 +25,11 @@ import {
 } from "@/lib/actions/guests"
 import { listMembers } from "@/lib/actions/members"
 import {
+  checkNextcloudVersion,
   importNextcloudFile,
   listNextcloudFiles,
   nextcloudStatus,
+  syncNextcloudVersion,
   unlinkNextcloud,
 } from "@/lib/actions/nextcloud"
 import { requireActor } from "@/lib/auth/session"
@@ -75,3 +77,7 @@ export const loadNextcloudFiles = async (input: unknown) =>
 export const importFromNextcloud = async (input: unknown) =>
   call(importNextcloudFile, input)
 export const unlinkFromNextcloud = async () => call(unlinkNextcloud, {})
+export const checkNextcloud = async (input: unknown) =>
+  call(checkNextcloudVersion, input)
+export const syncNextcloud = async (input: unknown) =>
+  call(syncNextcloudVersion, input)
