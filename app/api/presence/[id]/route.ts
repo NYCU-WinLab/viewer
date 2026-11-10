@@ -4,6 +4,7 @@ import { onChange } from "@/lib/actions/changes"
 import { runAction } from "@/lib/actions/define"
 import { getDocument } from "@/lib/actions/documents"
 import { getSession } from "@/lib/auth/session"
+import { avatarUrl } from "@/lib/portal"
 import { type PresenceEvent, join, move } from "@/lib/presence"
 
 // GET: join the document's room as a server-sent event stream. The first
@@ -49,7 +50,7 @@ export async function GET(
         {
           userId: session.user.id,
           name: session.user.name,
-          image: session.user.image ?? null,
+          image: avatarUrl(session.user),
         },
         (event) => (conn ? send(event) : early.push(event))
       )

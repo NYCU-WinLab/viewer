@@ -68,3 +68,50 @@ export async function sendInvitation(input: {
     throw new Error(reason(body?.error) ?? `portal 回應 ${response.status}`)
   }
 }
+
+export type Avatar = { contentType: string; version: string; base64: string }
+
+/** Avatars by username for 10 minutes, a miss included, so a busy room
+ * asks portal once per member. */
+const avatars = new Map<string, { at: number; avatar: Avatar | null }>()
+const avatarTtl = 10 * 60 * 1000
+
+/** A member's small avatar from portal (the same picture as on portal),
+ * or null when they have none or portal does not answer in 3 seconds. A
+ * failure is not cached, so the next view asks again. */
+export async function memberAvatar(username: string): Promise<Avatar | null> {
+  const hit = avatars.get(username)
+  if (hit && Date.now() - hit.at < avatarTtl) return hit.avatar
+  const key = process.env.PORTAL_SERVICE_KEY
+  if (!key) return null
+  try {
+    const response = await fetch(`${base()}/api/actions/get_member_avatar`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${key}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ username, size: "small" }),
+      signal: AbortSignal.timeout(3000),
+    })
+    if (!response.ok) return null
+    const data = (await response.json()) as Partial<Avatar> | null
+    const avatar =
+      data && data.base64 && data.version
+        ? {
+            contentType: data.contentType ?? "image/webp",
+            version: data.version,
+            base64: data.base64,
+          }
+        : null
+    avatars.set(username, { at: Date.now(), avatar })
+    return avatar
+  } catch {
+    return null
+  }
+}
+
+/** Where the page loads a member's avatar: portal's picture through
+ * /avatars, for members with a lab account (guests have none). */
+export const avatarUrl = (user: { id: string; username?: string | null }) =>
+  user.username ? `/avatars/${user.id}` : null

@@ -26,7 +26,7 @@ import {
   listGuestLinks,
   revokeGuestLink,
 } from "@/lib/actions/guests"
-import { listMembers } from "@/lib/actions/members"
+import { getMemberAvatar, listMembers } from "@/lib/actions/members"
 import {
   checkNextcloudVersion,
   importNextcloudFile,
@@ -58,6 +58,7 @@ export const actions: Action[] = [
   editComment,
   deleteComment,
   listMembers,
+  getMemberAvatar,
   createGuestLink,
   listGuestLinks,
   revokeGuestLink,

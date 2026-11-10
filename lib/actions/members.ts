@@ -5,6 +5,7 @@ import { defineAction } from "@/lib/actions/define"
 import { db } from "@/lib/db"
 import { account, user } from "@/lib/db/schema"
 import { labMembers } from "@/lib/keycloak"
+import { memberAvatar } from "@/lib/portal"
 
 export const listMembers = defineAction({
   name: "list_members",
@@ -56,6 +57,25 @@ export const listMembers = defineAction({
         })),
     ]
     return members.sort((a, b) => a.name.localeCompare(b.name, "zh-TW"))
+  },
+})
+
+export const getMemberAvatar = defineAction({
+  name: "get_member_avatar",
+  title: "成員頭像",
+  description:
+    "One member's avatar, the same picture they have on portal.winlab.tw, as base64 WebP (96px) with its version, or null when they have none or portal does not answer. user_id is a viewer member id.",
+  kind: "query",
+  // A guest sees the avatars of the others who have the document open.
+  guests: true,
+  input: z.object({ user_id: z.uuid() }),
+  run: async (_actor, { user_id }) => {
+    const [member] = await db
+      .select({ username: user.username })
+      .from(user)
+      .where(and(eq(user.id, user_id), isNull(user.guestLinkId)))
+      .limit(1)
+    return member?.username ? memberAvatar(member.username) : null
   },
 })
 
