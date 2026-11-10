@@ -9,6 +9,7 @@ import { listAnnotations } from "@/lib/actions/annotations"
 import { runAction } from "@/lib/actions/define"
 import { getDocument } from "@/lib/actions/documents"
 import { getSession, requireActor } from "@/lib/auth/session"
+import { avatarUrl } from "@/lib/portal"
 
 export const dynamic = "force-dynamic"
 
@@ -33,7 +34,7 @@ export default async function DocumentPage({
   const me = {
     userId: actor.userId,
     name: session?.user.name ?? "",
-    image: session?.user.image ?? null,
+    image: session ? avatarUrl(session.user) : null,
   }
 
   return (
