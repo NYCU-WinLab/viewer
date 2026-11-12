@@ -171,7 +171,7 @@ function AppShell({
           <div className="w-full max-w-2xl">{children}</div>
         </main>
       ) : layout === "wide" ? (
-        <main className="w-full px-6 pt-24 pb-24">{children}</main>
+        <main className="w-full px-4 pt-24 pb-24">{children}</main>
       ) : (
         <main className="mx-auto w-full max-w-4xl px-6 pt-24 pb-24">
           {children}

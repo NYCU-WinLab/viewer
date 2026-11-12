@@ -124,7 +124,9 @@ export function DocumentGrid({ documents }: { documents: GridDocument[] }) {
                       }
                     }}
                     className={cn(
-                      "flex flex-col gap-3 rounded-menu p-3 transition-colors duration-state outline-none select-none hover:bg-muted focus-visible:bg-muted data-popup-open:bg-muted",
+                      // Concentric corners: the card is rounded-menu, the cover
+                      // rounded-control 4px in, its badges pills 4px in again.
+                      "flex flex-col gap-2 rounded-menu p-1 transition-colors duration-state outline-none select-none hover:bg-muted focus-visible:bg-muted data-popup-open:bg-muted",
                       on && "bg-muted"
                     )}
                   />
@@ -132,7 +134,7 @@ export function DocumentGrid({ documents }: { documents: GridDocument[] }) {
               >
                 <div
                   className={cn(
-                    "relative aspect-4/3 overflow-hidden rounded-menu bg-muted",
+                    "relative aspect-4/3 overflow-hidden rounded-control bg-muted",
                     on && "outline-2 -outline-offset-2 outline-primary"
                   )}
                 >
@@ -145,23 +147,23 @@ export function DocumentGrid({ documents }: { documents: GridDocument[] }) {
                     className="size-full object-contain"
                   />
                   {on && (
-                    <span className="absolute top-2 left-2 flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                    <span className="absolute top-1 left-1 flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
                       <CheckIcon className="size-4" />
                     </span>
                   )}
                   <Badge
                     variant="outline"
-                    className="absolute bottom-2 left-2 bg-background"
+                    className="absolute bottom-1 left-1 bg-background"
                   >
                     {kinds[doc.kind]}
                   </Badge>
                   {doc.openMarks > 0 && (
-                    <Badge className="absolute top-2 right-2">
+                    <Badge className="absolute top-1 right-1">
                       {doc.openMarks} 未處理
                     </Badge>
                   )}
                 </div>
-                <div className="flex min-w-0 flex-col gap-1">
+                <div className="flex min-w-0 flex-col gap-1 px-2 pb-2">
                   <span className="truncate font-medium">
                     {doc.name}
                     {doc.latestVersion > 1 && (
@@ -235,21 +237,27 @@ export function DocumentGrid({ documents }: { documents: GridDocument[] }) {
       </Tabs>
 
       {selecting && (
-        <div className="fixed inset-x-4 bottom-4 z-40 mx-auto flex w-fit items-center gap-4 rounded-full border border-border bg-overlay py-2 pr-2 pl-6 shadow-lg backdrop-blur-md">
+        // A pill: its buttons are pills too, so the ends stay concentric.
+        <div className="fixed inset-x-4 bottom-4 z-40 mx-auto flex w-fit max-w-full items-center gap-2 rounded-full border border-border bg-overlay py-2 pr-2 pl-6 shadow-lg backdrop-blur-md sm:gap-4">
           <span className="whitespace-nowrap tabular-nums">
             已選 {chosen.length} 份
           </span>
-          <Button variant="ghost" onClick={() => setSelected(new Set())}>
+          <Button
+            variant="ghost"
+            className="rounded-full"
+            onClick={() => setSelected(new Set())}
+          >
             取消
           </Button>
           <Button
             variant="destructive"
+            className="min-w-0 rounded-full"
             disabled={owned.length === 0}
             onClick={() => setDeleting(owned)}
           >
             {owned.length === chosen.length
               ? "刪除"
-              : `刪除我擁有的 ${owned.length} 份`}
+              : `刪除我的 ${owned.length} 份`}
           </Button>
         </div>
       )}

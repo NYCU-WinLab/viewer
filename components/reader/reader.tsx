@@ -324,7 +324,9 @@ export function Reader({
 
       {/* The tool bar floats over the bottom of the document. */}
       <div className="fixed inset-x-0 bottom-4 z-30 flex justify-center px-4">
-        <Toolbar aria-label="工具">
+        {/* On a phone the bar tightens to fit 375px; narrower than that it
+            scrolls sideways instead of leaving the screen. */}
+        <Toolbar aria-label="工具" className="max-w-full overflow-x-auto">
           {tools.map((tool) => {
             const disabled = tool.mode !== "read" && !canComment
             return (
@@ -350,10 +352,15 @@ export function Reader({
               </Tooltip>
             )
           })}
-          <span aria-hidden className="mx-1 h-6 w-px bg-border" />
+          <span
+            aria-hidden
+            className="mx-1 h-6 w-px shrink-0 bg-border max-sm:hidden"
+          />
           <ToolbarPanel open={listOpen} onOpenChange={setListOpen}>
             <ToolbarPanelTrigger
-              render={<Button variant="ghost" className="rounded-full" />}
+              render={
+                <Button variant="ghost" className="rounded-full max-sm:px-2" />
+              }
             >
               <MessageSquareTextIcon />
               {open}
