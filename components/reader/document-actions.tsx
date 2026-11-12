@@ -82,7 +82,9 @@ export function DocumentActions({
     <>
       <ToolbarPanel>
         <ToolbarPanelTrigger
-          render={<Button variant="ghost" className="rounded-full" />}
+          render={
+            <Button variant="ghost" className="rounded-full max-sm:px-2" />
+          }
         >
           <HistoryIcon />v{version}
         </ToolbarPanelTrigger>
