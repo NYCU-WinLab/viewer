@@ -7,6 +7,7 @@ import {
   listAnnotations,
   resolveAnnotation,
 } from "@/lib/actions/annotations"
+import { askClaude, explainText, summarizeNotes } from "@/lib/actions/claude"
 import type { Action } from "@/lib/actions/define"
 import {
   deleteDocument,
@@ -59,6 +60,9 @@ export const actions: Action[] = [
   editComment,
   deleteComment,
   translateText,
+  explainText,
+  askClaude,
+  summarizeNotes,
   listMembers,
   getMemberAvatar,
   createGuestLink,

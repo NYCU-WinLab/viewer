@@ -4,7 +4,14 @@ import { Popover as PopoverPrimitive } from "@base-ui/react/popover"
 import * as React from "react"
 import { toast } from "sonner"
 
-import { comment, resolve, reword, uncomment, unmark } from "@/app/actions"
+import {
+  askClaudeInNote,
+  comment,
+  resolve,
+  reword,
+  uncomment,
+  unmark,
+} from "@/app/actions"
 import type { Comment, Mark } from "@/components/reader/types"
 import {
   ContextMenu,
@@ -48,6 +55,7 @@ type Layer =
   | { kind: "comment"; id: string; note: Comment; paper: number }
   | { kind: "draft"; id: "draft"; paper: number }
   | { kind: "empty"; id: "empty"; paper: number }
+  | { kind: "claude"; id: "claude"; paper: number }
 
 // The sticky notes of one mark, next to it: one square of paper per
 // comment, each writer in their own color, the newest stuck on top of the
@@ -65,6 +73,7 @@ export function StickyNote({
   onClose,
   onChanged,
   onCommented,
+  ask,
 }: {
   mark: Mark
   anchor: Element
@@ -75,6 +84,9 @@ export function StickyNote({
   onChanged: () => void
   /** A note was added, for the reader's undo. */
   onCommented?: (id: string, body: string) => void
+  /** What Claude is shown of the mark; absent when Claude is not set up.
+   * A note that mentions @Claude then gets its reply. */
+  ask?: () => { context: string; image?: string }
 }) {
   const [writing, setWriting] = React.useState(
     canComment && mark.comments.length === 0
@@ -86,6 +98,8 @@ export function StickyNote({
   const [waitFor, setWaitFor] = React.useState(0)
   const [sent, setSent] = React.useState("")
   const [raised, setRaised] = React.useState<string | null>(null)
+  /** The note count Claude's reply brings, while it is on its way. */
+  const [claudeAt, setClaudeAt] = React.useState(0)
 
   // Writers get papers in the order they first wrote: yellow, coral, blue,
   // green, lilac, orange.
@@ -108,6 +122,8 @@ export function StickyNote({
       id: "draft",
       paper: mine ? paperOf(mine.authorId ?? mine.id) : papers.size % 6,
     })
+  if (mark.comments.length < claudeAt)
+    layers.push({ kind: "claude", id: "claude", paper: papers.size % 6 })
   if (layers.length === 0) layers.push({ kind: "empty", id: "empty", paper: 0 })
 
   const send = async () => {
@@ -124,6 +140,16 @@ export function StickyNote({
       setWaitFor(mark.comments.length + 1)
       setWriting(false)
       onChanged()
+      if (ask && /@claude\b/i.test(body)) {
+        const count = mark.comments.length + 2
+        setClaudeAt(count)
+        askClaudeInNote({ annotationId: mark.id, ...ask() }).then((reply) => {
+          if (reply.error) {
+            toast.error(reply.error)
+            setClaudeAt(0)
+          } else onChanged()
+        })
+      }
     }
     setBusy(false)
     return ok
@@ -217,7 +243,12 @@ export function StickyNote({
                               onChange={setDraft}
                               onEnter={send}
                               label="留言"
+                              placeholder={ask ? "@Claude 會回覆" : undefined}
                             />
+                          ) : layer.kind === "claude" ? (
+                            <p className="m-auto animate-pulse">
+                              Claude 回覆中
+                            </p>
                           ) : (
                             <p className="m-auto">沒有留言</p>
                           )}
@@ -310,6 +341,7 @@ function NoteText({
   label,
   disabled,
   autoFocus,
+  placeholder,
 }: {
   value: string
   onChange: (value: string) => void
@@ -318,6 +350,8 @@ function NoteText({
   label: string
   disabled?: boolean
   autoFocus?: boolean
+  /** A hint on the empty paper. */
+  placeholder?: string
 }) {
   const box = React.useRef<HTMLTextAreaElement>(null)
   // Focus without scrolling: the note sits next to its mark, and a scroll
@@ -348,9 +382,10 @@ function NoteText({
           }
         }}
         aria-label={label}
+        placeholder={placeholder}
         disabled={disabled}
         className={cn(
-          "field-sizing-content max-h-full w-full resize-none bg-transparent text-center outline-none select-text",
+          "field-sizing-content max-h-full w-full resize-none bg-transparent text-center outline-none select-text placeholder:text-note-foreground/50",
           value.length <= 12 && "text-title"
         )}
       />

@@ -9,7 +9,7 @@ import { listAnnotations } from "@/lib/actions/annotations"
 import { runAction } from "@/lib/actions/define"
 import { getDocument } from "@/lib/actions/documents"
 import { getSession, requireActor } from "@/lib/auth/session"
-import { canTranslate } from "@/lib/anthropic"
+import { claudeReady } from "@/lib/anthropic"
 import { avatarUrl } from "@/lib/portal"
 
 export const dynamic = "force-dynamic"
@@ -52,7 +52,7 @@ export default async function DocumentPage({
           marks={marks}
           canComment={atLeast(doc.access, "comment")}
           canManage={atLeast(doc.access, "edit")}
-          canTranslate={canTranslate()}
+          canAsk={claudeReady()}
           actions={
             <DocumentActions
               documentId={id}

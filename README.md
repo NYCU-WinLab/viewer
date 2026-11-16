@@ -65,21 +65,21 @@ viewer.winlab.tw deploys on every push to `main`. The release workflow retags th
 
 Set these in `.env`; [.env.example](.env.example) documents every one.
 
-| Key                                                          | What it sets                                                                                                  | Default                           |
-| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- | --------------------------------- |
-| `POSTGRES_PASSWORD`                                          | The database password, used by every service                                                                  | required                          |
-| `BETTER_AUTH_URL`                                            | The public URL; the MCP resource is `<url>/mcp`                                                               | required                          |
-| `BETTER_AUTH_SECRET`                                         | Signs sessions and OAuth queries                                                                              | required                          |
-| `KEYCLOAK_ISSUER`                                            | The realm URL, e.g. `https://auth.example.com/realms/lab`                                                     | required                          |
-| `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET`               | The viewer's Keycloak client                                                                                  | required                          |
-| `NEXTCLOUD_URL`, `NEXTCLOUD_USER`, `NEXTCLOUD_APP_PASSWORD`  | Where the files live                                                                                          | required                          |
-| `NEXTCLOUD_ROOT`                                             | The folder in that account the viewer owns                                                                    | `viewer`                          |
-| `NEXTCLOUD_OAUTH_CLIENT_ID`, `NEXTCLOUD_OAUTH_CLIENT_SECRET` | The Nextcloud OAuth 2 client members link their own account with; no Nextcloud import when empty              | empty                             |
-| `PORTAL_URL`, `PORTAL_SERVICE_KEY`                           | Where guest invitations are mailed from: a portal service key allowed to send invitations; no mail when empty | `https://portal.winlab.tw`, empty |
-| `ANTHROPIC_API_KEY`, `TRANSLATE_MODEL`                       | The Claude API key and model that translate selected text; no translate button when the key is empty          | empty, `claude-opus-5-5`          |
-| `VIEWER_VERSION`                                             | Image tag                                                                                                     | `main`                            |
-| `VIEWER_BIND`, `VIEWER_PORT`                                 | Where web listens on the host                                                                                 | `127.0.0.1`, `3000`               |
-| `OTEL_EXPORTER_OTLP_ENDPOINT`                                | OTLP/HTTP endpoint for traces and error logs; off when empty                                                  | empty                             |
+| Key                                                          | What it sets                                                                                                                 | Default                           |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| `POSTGRES_PASSWORD`                                          | The database password, used by every service                                                                                 | required                          |
+| `BETTER_AUTH_URL`                                            | The public URL; the MCP resource is `<url>/mcp`                                                                              | required                          |
+| `BETTER_AUTH_SECRET`                                         | Signs sessions and OAuth queries                                                                                             | required                          |
+| `KEYCLOAK_ISSUER`                                            | The realm URL, e.g. `https://auth.example.com/realms/lab`                                                                    | required                          |
+| `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET`               | The viewer's Keycloak client                                                                                                 | required                          |
+| `NEXTCLOUD_URL`, `NEXTCLOUD_USER`, `NEXTCLOUD_APP_PASSWORD`  | Where the files live                                                                                                         | required                          |
+| `NEXTCLOUD_ROOT`                                             | The folder in that account the viewer owns                                                                                   | `viewer`                          |
+| `NEXTCLOUD_OAUTH_CLIENT_ID`, `NEXTCLOUD_OAUTH_CLIENT_SECRET` | The Nextcloud OAuth 2 client members link their own account with; no Nextcloud import when empty                             | empty                             |
+| `PORTAL_URL`, `PORTAL_SERVICE_KEY`                           | Where guest invitations are mailed from: a portal service key allowed to send invitations; no mail when empty                | `https://portal.winlab.tw`, empty |
+| `ANTHROPIC_API_KEY`, `TRANSLATE_MODEL`                       | The Claude API key and model that translate and explain, reply to @Claude and sum up notes; none of it when the key is empty | empty, `claude-opus-5-5`          |
+| `VIEWER_VERSION`                                             | Image tag                                                                                                                    | `main`                            |
+| `VIEWER_BIND`, `VIEWER_PORT`                                 | Where web listens on the host                                                                                                | `127.0.0.1`, `3000`               |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`                                | OTLP/HTTP endpoint for traces and error logs; off when empty                                                                 | empty                             |
 
 ## How it works
 

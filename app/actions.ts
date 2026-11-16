@@ -10,6 +10,7 @@ import {
   editComment,
   resolveAnnotation,
 } from "@/lib/actions/annotations"
+import { askClaude, explainText, summarizeNotes } from "@/lib/actions/claude"
 import { type Action, errorMessage, runAction } from "@/lib/actions/define"
 import {
   deleteDocument,
@@ -72,6 +73,10 @@ export const comment = async (input: unknown) => call(addComment, input)
 export const reword = async (input: unknown) => call(editComment, input)
 export const uncomment = async (input: unknown) => call(deleteComment, input)
 export const translate = async (input: unknown) => call(translateText, input)
+export const explain = async (input: unknown) => call(explainText, input)
+export const askClaudeInNote = async (input: unknown) => call(askClaude, input)
+export const summarizeNotesOf = async (input: unknown) =>
+  call(summarizeNotes, input)
 
 export const loadNextcloudStatus = async () => call(nextcloudStatus, {})
 export const loadNextcloudFiles = async (input: unknown) =>

@@ -1,11 +1,16 @@
 "use client"
 
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover"
-import { LanguagesIcon, MessageSquarePlusIcon } from "lucide-react"
+import {
+  LanguagesIcon,
+  MessageSquarePlusIcon,
+  SparklesIcon,
+} from "lucide-react"
 import * as React from "react"
 import { createPortal } from "react-dom"
 
-import { translate } from "@/app/actions"
+import { explain, translate } from "@/app/actions"
+import { cutPage } from "@/components/reader/page-cut"
 import { Button } from "@/components/ui/button"
 import {
   Tooltip,
@@ -15,38 +20,43 @@ import {
 import { cn } from "@/lib/utils"
 import type { Translation } from "@/lib/anthropic"
 
-/** Translations this page already asked for, by text and context. */
-const seen = new Map<string, Translation>()
+/** Answers this page already got, by what was asked. */
+const seen = new Map<string, Translation | string>()
 
-/** Text the reader just selected, or a highlight they clicked: where it
- * ends on its page (in page fractions), and the words around it for the
- * translator. */
+/** Text the reader just selected, a highlight they clicked, or a box they
+ * drew or clicked: where it ends on its page (in page fractions), its
+ * words and the words around it, and a box's place to cut the picture. */
 export type Picked = {
   page: number
   x: number
   y: number
   text: string
   context: string
+  rect?: [number, number, number, number]
 }
 
-// Two small buttons where a selection ends: write a sticky note on it, or
-// translate it. Nothing larger opens until one is pressed. They sit inside
-// the page, so they scroll with it.
+type Ask = "translate" | "explain"
+
+// Small buttons where a selection ends: write a sticky note on it,
+// translate it, or have it explained (a box: note or explain). Nothing
+// larger opens until one is pressed. They sit inside the page, so they
+// scroll with it.
 export function SelectionActions({
   documentId,
   picked,
   onNote,
-  canTranslate,
+  canAsk,
 }: {
   documentId: string
   picked: Picked
   /** Opens the sticky note of the selection; absent when the reader may
    * not comment. */
   onNote?: () => void
-  canTranslate: boolean
+  /** Claude is set up. */
+  canAsk: boolean
 }) {
   const [bar, setBar] = React.useState<HTMLDivElement | null>(null)
-  const [translating, setTranslating] = React.useState(false)
+  const [asking, setAsking] = React.useState<Ask | null>(null)
   const place = React.useCallback(
     (element: HTMLDivElement | null) => {
       if (!element) return
@@ -57,8 +67,27 @@ export function SelectionActions({
     [picked.x, picked.y]
   )
   const page = document.querySelector(`[data-page="${picked.page}"]`)
-  canTranslate &&= !!picked.text
-  if (!page || (!onNote && !canTranslate)) return null
+  const canTranslate = canAsk && !!picked.text
+  const canExplain = canAsk && (!!picked.text || !!picked.rect)
+  if (!page || (!onNote && !canExplain)) return null
+  const button = (ask: Ask, label: string, icon: React.ReactNode) => (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            variant={asking === ask ? "default" : "ghost"}
+            size="icon"
+            aria-label={label}
+            aria-pressed={asking === ask}
+            onClick={() => setAsking(asking === ask ? null : ask)}
+          />
+        }
+      >
+        {icon}
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  )
   return createPortal(
     <div
       ref={place}
@@ -89,30 +118,16 @@ export function SelectionActions({
           <TooltipContent>留言</TooltipContent>
         </Tooltip>
       )}
-      {canTranslate && (
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant={translating ? "default" : "ghost"}
-                size="icon"
-                aria-label="翻譯"
-                aria-pressed={translating}
-                onClick={() => setTranslating(!translating)}
-              />
-            }
-          >
-            <LanguagesIcon />
-          </TooltipTrigger>
-          <TooltipContent>翻譯</TooltipContent>
-        </Tooltip>
-      )}
-      {translating && bar && (
-        <TranslationPanel
+      {canTranslate && button("translate", "翻譯", <LanguagesIcon />)}
+      {canExplain && button("explain", "解釋", <SparklesIcon />)}
+      {asking && bar && (
+        <AnswerPanel
+          key={asking}
+          ask={asking}
           documentId={documentId}
           picked={picked}
           anchor={bar}
-          onClose={() => setTranslating(false)}
+          onClose={() => setAsking(null)}
         />
       )}
     </div>,
@@ -120,24 +135,28 @@ export function SelectionActions({
   )
 }
 
-// The translation of the selection, beside the buttons: the translation
-// first, then what fits the selection. A word has its part of speech,
-// pronunciation, senses and examples; a phrase its use and examples; a
-// sentence a note on its paragraph.
-function TranslationPanel({
+// The answer beside the buttons. A translation comes first, then what
+// fits the selection: a word has its part of speech, pronunciation, senses
+// and examples; a phrase its use and examples; a sentence a note on its
+// paragraph. An explanation is a few sentences on the text or the cut of
+// the page.
+function AnswerPanel({
+  ask,
   documentId,
   picked,
   anchor,
   onClose,
 }: {
+  ask: Ask
   documentId: string
   picked: Picked
   anchor: Element
   onClose: () => void
 }) {
-  const key = `${picked.text}\n${picked.context}`
+  const label = ask === "translate" ? "翻譯" : "解釋"
+  const key = `${ask}\n${picked.page}\n${picked.rect ?? ""}\n${picked.text}\n${picked.context}`
   const [result, setResult] = React.useState<
-    { data: Translation } | { error: string } | null
+    { data: Translation | string } | { error: string } | null
   >(() => {
     const data = seen.get(key)
     return data ? { data } : null
@@ -145,11 +164,22 @@ function TranslationPanel({
   React.useEffect(() => {
     if (seen.has(key)) return
     let cancelled = false
-    translate({
+    const input = {
       id: documentId,
       text: picked.text,
       context: picked.context,
-    }).then((answer) => {
+    }
+    const image =
+      ask === "explain" && picked.rect
+        ? cutPage(picked.page, picked.rect)
+        : undefined
+    const request: Promise<{ data?: Translation | string; error?: string }> =
+      ask === "translate"
+        ? translate(input)
+        : image === null
+          ? Promise.resolve({ error: "這頁還沒畫好，再試一次" })
+          : explain({ ...input, image })
+    request.then((answer) => {
       if (answer.data) seen.set(key, answer.data)
       if (cancelled) return
       setResult(
@@ -159,9 +189,10 @@ function TranslationPanel({
     return () => {
       cancelled = true
     }
-  }, [documentId, key, picked.text, picked.context])
+  }, [ask, documentId, key, picked])
 
-  const data = result && "data" in result ? result.data : null
+  const answer = result && "data" in result ? result.data : null
+  const data = typeof answer === "string" ? null : answer
   return (
     <PopoverPrimitive.Root open onOpenChange={(open) => !open && onClose()}>
       <PopoverPrimitive.Portal>
@@ -175,13 +206,18 @@ function TranslationPanel({
         >
           <PopoverPrimitive.Popup
             data-slot="popover-content"
-            aria-label="翻譯"
+            aria-label={label}
             aria-busy={!result}
             className="flex max-h-96 w-80 max-w-(--available-width) flex-col gap-2 overflow-y-auto rounded-menu border border-border bg-overlay p-3 text-body text-foreground shadow-md outline-hidden backdrop-blur-md duration-overlay data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95"
           >
-            {!result && <p className="text-muted-foreground">翻譯中</p>}
+            {!result && <p className="text-muted-foreground">{label}中</p>}
             {result && "error" in result && (
-              <p className="text-destructive">{result.error || "翻譯失敗"}</p>
+              <p className="text-destructive">
+                {result.error || `${label}失敗`}
+              </p>
+            )}
+            {typeof answer === "string" && (
+              <p className="break-words whitespace-pre-wrap">{answer}</p>
             )}
             {data && (
               <>
