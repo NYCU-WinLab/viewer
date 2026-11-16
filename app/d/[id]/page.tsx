@@ -7,7 +7,7 @@ import { ViewerShell } from "@/components/viewer-shell"
 import { atLeast } from "@/lib/actions/access"
 import { listAnnotations } from "@/lib/actions/annotations"
 import { runAction } from "@/lib/actions/define"
-import { getDocument } from "@/lib/actions/documents"
+import { getDocument, listDocumentPeople } from "@/lib/actions/documents"
 import { getSession, requireActor } from "@/lib/auth/session"
 import { claudeReady } from "@/lib/anthropic"
 import { avatarUrl } from "@/lib/portal"
@@ -30,7 +30,10 @@ export default async function DocumentPage({
   const version = doc.versions.some((x) => x.number === asked)
     ? asked
     : doc.latestVersion
-  const marks = await runAction(listAnnotations, actor, { id, version })
+  const [marks, people] = await Promise.all([
+    runAction(listAnnotations, actor, { id, version }),
+    runAction(listDocumentPeople, actor, { id }),
+  ])
   const session = await getSession()
   const me = {
     userId: actor.userId,
@@ -53,6 +56,9 @@ export default async function DocumentPage({
           canComment={atLeast(doc.access, "comment")}
           canManage={atLeast(doc.access, "edit")}
           canAsk={claudeReady()}
+          people={people
+            .filter((person) => person.userId !== actor.userId)
+            .map((person) => person.name)}
           actions={
             <DocumentActions
               documentId={id}

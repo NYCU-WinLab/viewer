@@ -12,6 +12,12 @@ import {
   uncomment,
   unmark,
 } from "@/app/actions"
+import {
+  type Mentionable,
+  WithMentions,
+  mentionables,
+  useMentions,
+} from "@/components/reader/mentions"
 import type { Comment, Mark } from "@/components/reader/types"
 import {
   ContextMenu,
@@ -74,6 +80,7 @@ export function StickyNote({
   onChanged,
   onCommented,
   ask,
+  people = [],
 }: {
   mark: Mark
   anchor: Element
@@ -87,7 +94,10 @@ export function StickyNote({
   /** What Claude is shown of the mark; absent when Claude is not set up.
    * A note that mentions @Claude then gets its reply. */
   ask?: () => { context: string; image?: string }
+  /** Names of the others who can open the document, to mention. */
+  people?: string[]
 }) {
+  const mentions = mentionables(people, !!ask)
   const [writing, setWriting] = React.useState(
     canComment && mark.comments.length === 0
   )
@@ -177,7 +187,7 @@ export function StickyNote({
         const target = details.event?.target
         if (
           target instanceof Element &&
-          target.closest("[data-slot=context-menu-content]")
+          target.closest("[data-slot=context-menu-content], [data-mentions]")
         )
           return
         if (!open) close()
@@ -244,6 +254,7 @@ export function StickyNote({
                               onEnter={send}
                               label="留言"
                               placeholder={ask ? "@Claude 會回覆" : undefined}
+                              mentions={mentions}
                             />
                           ) : layer.kind === "claude" ? (
                             <p className="m-auto animate-pulse">
@@ -342,6 +353,7 @@ function NoteText({
   disabled,
   autoFocus,
   placeholder,
+  mentions = [],
 }: {
   value: string
   onChange: (value: string) => void
@@ -352,8 +364,11 @@ function NoteText({
   autoFocus?: boolean
   /** A hint on the empty paper. */
   placeholder?: string
+  /** Who @ can mention; none turns the list off. */
+  mentions?: Mentionable[]
 }) {
   const box = React.useRef<HTMLTextAreaElement>(null)
+  const mention = useMentions(box, mentions, onChange)
   // Focus without scrolling: the note sits next to its mark, and a scroll
   // would move the mark away from the reader.
   React.useEffect(() => {
@@ -366,8 +381,13 @@ function NoteText({
       <textarea
         ref={box}
         value={value}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) => {
+          onChange(event.target.value)
+          mention.update()
+        }}
+        onSelect={mention.update}
         onKeyDown={(event) => {
+          if (mention.onKey(event)) return
           if (
             event.key === "Enter" &&
             !event.shiftKey &&
@@ -389,6 +409,7 @@ function NoteText({
           value.length <= 12 && "text-title"
         )}
       />
+      {mention.list}
     </div>
   )
 }
@@ -453,7 +474,7 @@ function CommentNote({
                 note.body.length <= 12 && "text-title"
               )}
             >
-              {note.body}
+              <WithMentions text={note.body} />
             </p>
           </div>
         )}

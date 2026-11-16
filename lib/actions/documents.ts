@@ -354,6 +354,31 @@ export const listShares = defineAction({
   },
 })
 
+export const listDocumentPeople = defineAction({
+  name: "list_document_people",
+  title: "文件成員",
+  description:
+    "Everyone who can open a document as a lab member: its owner first, then each member it is shared with (id and name). These are who a sticky note can mention with @name. Needs view access.",
+  kind: "query",
+  guests: true,
+  input: z.object({ id }),
+  run: async (actor, { id }) => {
+    await requireAccess(actor, id, "view")
+    const [owner] = await db
+      .select({ userId: user.id, name: user.name })
+      .from(documents)
+      .innerJoin(user, eq(user.id, documents.ownerId))
+      .where(eq(documents.id, id))
+    const shared = await db
+      .select({ userId: user.id, name: user.name })
+      .from(documentGrants)
+      .innerJoin(user, eq(user.id, documentGrants.userId))
+      .where(eq(documentGrants.documentId, id))
+      .orderBy(user.name)
+    return [owner, ...shared]
+  },
+})
+
 const role = z.enum(["view", "comment", "edit"])
 
 export const shareDocument = defineAction({
