@@ -5,6 +5,7 @@ import {
   LanguagesIcon,
   MessageSquarePlusIcon,
   SparklesIcon,
+  StickyNoteIcon,
 } from "lucide-react"
 import * as React from "react"
 import { createPortal } from "react-dom"
@@ -37,6 +38,20 @@ export type Picked = {
 
 type Ask = "translate" | "explain"
 
+/** An answer as the words of a sticky note: the translation, then its part
+ * of speech and pronunciation, then the note. */
+function noteOf(answer: Translation | string) {
+  if (typeof answer === "string") return answer.slice(0, 5000)
+  return [
+    answer.translation,
+    [answer.partOfSpeech, answer.phonetic].filter(Boolean).join("，"),
+    answer.note,
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .slice(0, 5000)
+}
+
 // Small buttons where a selection ends: write a sticky note on it,
 // translate it, or have it explained (a box: note or explain). Nothing
 // larger opens until one is pressed. They sit inside the page, so they
@@ -45,6 +60,7 @@ export function SelectionActions({
   documentId,
   picked,
   onNote,
+  onKeep,
   canAsk,
 }: {
   documentId: string
@@ -52,6 +68,9 @@ export function SelectionActions({
   /** Opens the sticky note of the selection; absent when the reader may
    * not comment. */
   onNote?: () => void
+  /** Keeps an answer as a sticky note; absent when the reader may not
+   * comment. */
+  onKeep?: (body: string) => Promise<void>
   /** Claude is set up. */
   canAsk: boolean
 }) {
@@ -127,6 +146,7 @@ export function SelectionActions({
           documentId={documentId}
           picked={picked}
           anchor={bar}
+          onKeep={onKeep}
           onClose={() => setAsking(null)}
         />
       )}
@@ -145,14 +165,17 @@ function AnswerPanel({
   documentId,
   picked,
   anchor,
+  onKeep,
   onClose,
 }: {
   ask: Ask
   documentId: string
   picked: Picked
   anchor: Element
+  onKeep?: (body: string) => Promise<void>
   onClose: () => void
 }) {
+  const [keeping, setKeeping] = React.useState(false)
   const label = ask === "translate" ? "翻譯" : "解釋"
   const key = `${ask}\n${picked.page}\n${picked.rect ?? ""}\n${picked.text}\n${picked.context}`
   const [result, setResult] = React.useState<
@@ -254,6 +277,21 @@ function AnswerPanel({
                   </ul>
                 )}
               </>
+            )}
+            {answer && onKeep && (
+              <Button
+                variant="outline"
+                className="sticky bottom-0 self-start"
+                disabled={keeping}
+                onClick={async () => {
+                  setKeeping(true)
+                  await onKeep(noteOf(answer))
+                  setKeeping(false)
+                }}
+              >
+                <StickyNoteIcon />
+                存成便利貼
+              </Button>
             )}
           </PopoverPrimitive.Popup>
         </PopoverPrimitive.Positioner>

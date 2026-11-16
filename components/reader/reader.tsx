@@ -13,11 +13,14 @@ import * as React from "react"
 import { toast } from "sonner"
 
 import {
+  resolve,
+  reword,
   comment as saveComment,
   mark as saveMark,
   uncomment,
   unmark,
 } from "@/app/actions"
+import { HistoryContext, type Step } from "@/components/reader/history"
 import { NoteSummary } from "@/components/reader/note-summary"
 import { contextOf, cutPage } from "@/components/reader/page-cut"
 import { PdfPage, noteCorner } from "@/components/reader/pdf-page"
@@ -48,12 +51,6 @@ const tools: {
   { mode: "box", label: "框選", key: "R", icon: SquareDashedIcon },
   { mode: "pen", label: "原子筆", key: "P", icon: PenLineIcon },
 ]
-
-/** Something the reader just added, which Cmd+Z takes away again and
- * Shift+Cmd+Z puts back. */
-type Step =
-  | { kind: "mark"; id: string; draft: Draft }
-  | { kind: "comment"; id: string; annotationId: string; body: string }
 
 /** Where the selected text sits in its page, with a little context on each
  * side, so the mark can be found again in a newer version. */
@@ -289,68 +286,135 @@ export function Reader({
     return id
   }
 
-  /** Saves a mark and gives its id; a failure is toasted. A new mark
-   * (not one put back) clears what was taken back. */
-  const save = React.useCallback(
-    async (draft: Draft, again?: boolean) => {
+  /** Saves a mark and gives its id; a failure is toasted. */
+  const put = React.useCallback(
+    async (draft: Draft, comment?: string) => {
       if (!canComment) return
-      const result = await saveMark({ id: documentId, version, ...draft })
+      const result = await saveMark({
+        id: documentId,
+        version,
+        ...draft,
+        comment,
+      })
       if (!result.data) {
         toast.error(result.error ?? "標記失敗")
         return
       }
-      done.current.push({ kind: "mark", id: result.data.id, draft })
-      if (!again) undone.current = []
-      router.refresh()
       return result.data.id
     },
-    [canComment, documentId, version, router]
+    [canComment, documentId, version]
   )
 
-  /** Takes back the last mark or note this reader added. */
+  /** Records something new the reader did; it clears what was taken
+   * back. */
+  const record = React.useCallback((step: Step) => {
+    done.current.push(step)
+    undone.current = []
+  }, [])
+
+  /** Saves a new mark and gives its id. */
+  const save = React.useCallback(
+    async (draft: Draft) => {
+      const id = await put(draft)
+      if (!id) return
+      record({ kind: "mark", id, draft })
+      router.refresh()
+      return id
+    },
+    [put, record, router]
+  )
+
+  /** Does a step (forward) or takes it back; false when it could not. */
+  const apply = async (step: Step, forward: boolean): Promise<boolean> => {
+    const id = now(step.id)
+    const fail = (error?: string) => {
+      toast.error(error ?? "復原失敗")
+      return false
+    }
+    // Adding a mark is deleting it, backwards.
+    const removes =
+      (step.kind === "mark" && !forward) || (step.kind === "unmark" && forward)
+    const adds =
+      (step.kind === "mark" && forward) || (step.kind === "unmark" && !forward)
+    if (removes) {
+      // Notes added since would go with it; their own steps come first.
+      const mark = marks.find((m) => m.id === id)
+      const own = step.kind === "mark" && step.note ? 1 : 0
+      if (
+        step.kind === "mark"
+          ? (mark?.comments.length ?? 0) > own
+          : mark?.comments.some((note) => !note.mine)
+      )
+        return fail("這個標記已有留言")
+      const result = await unmark({ id })
+      if (result.error) return fail(result.error)
+      if (selected === id) setSelected(null)
+      setPicked(null)
+      return true
+    }
+    if (adds && (step.kind === "mark" || step.kind === "unmark")) {
+      const fresh = await put(
+        step.draft,
+        step.kind === "mark" ? step.note : undefined
+      )
+      if (!fresh) return false
+      moved.current.set(id, fresh)
+      if (step.kind === "unmark") {
+        // Each note comes back with a new id, which later steps follow.
+        for (const note of step.notes) {
+          const result = await saveComment({
+            annotationId: fresh,
+            body: note.body,
+          })
+          if (!result.data) return fail(result.error)
+          moved.current.set(note.id, result.data.id)
+        }
+        if (step.resolved) await resolve({ id: fresh, resolved: true })
+        if (step.lost) toast.error("別人的留言無法復原")
+      }
+      return true
+    }
+    if (step.kind === "comment" || step.kind === "uncomment") {
+      if ((step.kind === "comment") === forward) {
+        const result = await saveComment({
+          annotationId: now(step.annotationId),
+          body: step.body,
+        })
+        if (!result.data) return fail(result.error)
+        moved.current.set(id, result.data.id)
+        return true
+      }
+      const result = await uncomment({ id })
+      return result.error ? fail(result.error) : true
+    }
+    if (step.kind === "reword") {
+      const body = forward ? step.after : step.before
+      const result = await reword({ id, body })
+      return result.error ? fail(result.error) : true
+    }
+    if (step.kind === "resolve") {
+      const resolved = forward ? step.resolved : !step.resolved
+      const result = await resolve({ id, resolved })
+      return result.error ? fail(result.error) : true
+    }
+    return false
+  }
+
+  /** Takes back the last thing this reader did. */
   const undo = async () => {
     const step = done.current.pop()
     if (!step) return
-    const id = now(step.id)
-    // Someone's note on the mark would go with it.
-    if (
-      step.kind === "mark" &&
-      marks.find((m) => m.id === id)?.comments.length
-    ) {
-      done.current.push(step)
-      return toast.error("這個標記已有留言")
-    }
-    const result =
-      step.kind === "mark" ? await unmark({ id }) : await uncomment({ id })
-    if (result.error) {
-      done.current.push(step)
-      return toast.error(result.error)
-    }
-    undone.current.push(step)
-    if (step.kind === "mark") {
-      if (selected === id) setSelected(null)
-      setPicked(null)
-    }
+    if (await apply(step, false)) undone.current.push(step)
+    else done.current.push(step)
     router.refresh()
   }
 
-  /** Puts back what was last taken back. */
+  /** Does again what was last taken back. */
   const redo = async () => {
     const step = undone.current.pop()
     if (!step) return
-    if (step.kind === "mark") {
-      const id = await save(step.draft, true)
-      if (id) moved.current.set(now(step.id), id)
-      else undone.current.push(step)
-      return
-    }
-    const annotationId = now(step.annotationId)
-    const result = await saveComment({ annotationId, body: step.body })
-    if (!result.data) {
-      undone.current.push(step)
-      return toast.error(result.error ?? "留言失敗")
-    }
-    done.current.push({ ...step, id: result.data.id, annotationId })
+    if (await apply(step, true)) done.current.push(step)
+    else undone.current.push(step)
     router.refresh()
   }
   const history = React.useRef({ undo, redo })
@@ -436,6 +500,27 @@ export function Reader({
     window.getSelection()?.removeAllRanges()
     setPicked(null)
     if (id) setSelected(id)
+  }
+
+  /** Keeps an answer (a translation or an explanation) as a sticky note
+   * on the selection's mark, and opens it. */
+  const keep = async (body: string) => {
+    if (!picked) return
+    let id = picked.markId
+    if (id) {
+      const result = await saveComment({ annotationId: id, body })
+      if (!result.data) return void toast.error(result.error ?? "留言失敗")
+      record({ kind: "comment", id: result.data.id, annotationId: id, body })
+    } else if (picked.draft) {
+      id = await put(picked.draft, body)
+      if (!id) return
+      record({ kind: "mark", id, draft: picked.draft, note: body })
+    }
+    if (!id) return
+    window.getSelection()?.removeAllRanges()
+    setPicked(null)
+    setSelected(id)
+    router.refresh()
   }
 
   // V, H, R and P pick tools; Esc reads again and closes the note. Cmd+Z
@@ -540,164 +625,158 @@ export function Reader({
   )
 
   return (
-    <div className="flex items-start gap-6 pb-24">
-      <div
-        ref={column}
-        onPointerMove={track}
-        onPointerLeave={() => presence?.move(null)}
-        className="mx-auto flex w-full max-w-5xl min-w-0 flex-1 flex-col gap-6"
-      >
-        {failed && (
-          <p className="text-center text-destructive">這份文件打不開</p>
-        )}
-        {!pdf && !failed && (
-          <p className="text-center text-muted-foreground">載入中</p>
-        )}
-        {pdf &&
-          width > 0 &&
-          sizes.map((size, index) => (
-            <PdfPage
-              key={index}
-              pdf={pdf}
-              number={index + 1}
-              size={size}
-              width={width}
-              marks={marks.filter((m) => m.page === index + 1)}
-              mode={mode}
-              selected={selected}
-              onSelect={pick}
-              onNote={(id) => {
-                setPicked(null)
-                setSelected(id)
-              }}
-              onDraft={draw}
-              cursors={others.filter((v) => v.cursor.page === index + 1)}
-              canComment={canComment}
-              canManage={canManage}
-              onChanged={() => router.refresh()}
-            />
-          ))}
-      </div>
+    <HistoryContext value={record}>
+      <div className="flex items-start gap-6 pb-24">
+        <div
+          ref={column}
+          onPointerMove={track}
+          onPointerLeave={() => presence?.move(null)}
+          className="mx-auto flex w-full max-w-5xl min-w-0 flex-1 flex-col gap-6"
+        >
+          {failed && (
+            <p className="text-center text-destructive">這份文件打不開</p>
+          )}
+          {!pdf && !failed && (
+            <p className="text-center text-muted-foreground">載入中</p>
+          )}
+          {pdf &&
+            width > 0 &&
+            sizes.map((size, index) => (
+              <PdfPage
+                key={index}
+                pdf={pdf}
+                number={index + 1}
+                size={size}
+                width={width}
+                marks={marks.filter((m) => m.page === index + 1)}
+                mode={mode}
+                selected={selected}
+                onSelect={pick}
+                onNote={(id) => {
+                  setPicked(null)
+                  setSelected(id)
+                }}
+                onDraft={draw}
+                cursors={others.filter((v) => v.cursor.page === index + 1)}
+                canComment={canComment}
+                canManage={canManage}
+                onChanged={() => router.refresh()}
+              />
+            ))}
+        </div>
 
-      {/* Every sticky note of this version, in a column that slides in
+        {/* Every sticky note of this version, in a column that slides in
           beside the pages (a sheet rising above the tool bar on a narrow
           screen). */}
-      <div
-        data-open={listOpen ? "" : undefined}
-        inert={!listOpen}
-        className="note-rail"
-      >
-        <aside
-          aria-label="所有便利貼"
-          className="flex note-list w-72 flex-col overflow-y-auto rounded-menu border border-border bg-overlay p-1 shadow-md backdrop-blur-md max-lg:max-h-80 max-lg:w-auto"
+        <div
+          data-open={listOpen ? "" : undefined}
+          inert={!listOpen}
+          className="note-rail"
         >
-          {canAsk && noted.length > 0 && (
-            <NoteSummary
-              documentId={documentId}
-              version={version}
+          <aside
+            aria-label="所有便利貼"
+            className="flex note-list w-72 flex-col overflow-y-auto rounded-menu border border-border bg-overlay p-1 shadow-md backdrop-blur-md max-lg:max-h-80 max-lg:w-auto"
+          >
+            {canAsk && noted.length > 0 && (
+              <NoteSummary
+                documentId={documentId}
+                version={version}
+                marks={noted}
+                onPick={(mark) => focus(mark)}
+              />
+            )}
+            <MarkList
               marks={noted}
-              onPick={(mark) => focus(mark)}
+              onPick={(mark) => {
+                if (!window.matchMedia("(min-width: 64rem)").matches)
+                  setListOpen(false)
+                focus(mark)
+              }}
             />
-          )}
-          <MarkList
-            marks={noted}
-            onPick={(mark) => {
-              if (!window.matchMedia("(min-width: 64rem)").matches)
-                setListOpen(false)
-              focus(mark)
-            }}
+          </aside>
+        </div>
+
+        {picked && (
+          <SelectionActions
+            key={`${picked.markId} ${picked.page} ${picked.x} ${picked.y} ${picked.text}`}
+            documentId={documentId}
+            picked={picked}
+            onNote={canComment ? note : undefined}
+            onKeep={canComment ? keep : undefined}
+            canAsk={canAsk}
           />
-        </aside>
-      </div>
+        )}
 
-      {picked && (
-        <SelectionActions
-          key={`${picked.markId} ${picked.page} ${picked.x} ${picked.y} ${picked.text}`}
-          documentId={documentId}
-          picked={picked}
-          onNote={canComment ? note : undefined}
-          canAsk={canAsk}
-        />
-      )}
+        {selectedMark && anchor && (
+          <StickyNote
+            key={selectedMark.id}
+            mark={selectedMark}
+            anchor={anchor}
+            canComment={canComment}
+            canManage={canManage}
+            onClose={() => setSelected(null)}
+            onChanged={() => router.refresh()}
+            ask={canAsk ? () => claudeSees(selectedMark) : undefined}
+            people={people}
+          />
+        )}
 
-      {selectedMark && anchor && (
-        <StickyNote
-          key={selectedMark.id}
-          mark={selectedMark}
-          anchor={anchor}
-          canComment={canComment}
-          canManage={canManage}
-          onClose={() => setSelected(null)}
-          onChanged={() => router.refresh()}
-          ask={canAsk ? () => claudeSees(selectedMark) : undefined}
-          people={people}
-          onCommented={(id, body) => {
-            done.current.push({
-              kind: "comment",
-              id,
-              annotationId: selectedMark.id,
-              body,
-            })
-            undone.current = []
-          }}
-        />
-      )}
-
-      {/* The tool bar floats over the bottom of the document. */}
-      <div className="fixed inset-x-0 bottom-4 z-30 flex justify-center px-4">
-        {/* On a phone the bar tightens to fit 375px; narrower than that it
+        {/* The tool bar floats over the bottom of the document. */}
+        <div className="fixed inset-x-0 bottom-4 z-30 flex justify-center px-4">
+          {/* On a phone the bar tightens to fit 375px; narrower than that it
             scrolls sideways instead of leaving the screen. */}
-        <Toolbar aria-label="工具" className="max-w-full overflow-x-auto">
-          {tools.map((tool) => {
-            const disabled = tool.mode !== "read" && !canComment
-            return (
-              <Tooltip key={tool.mode}>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant={mode === tool.mode ? "default" : "ghost"}
-                      size="icon"
-                      aria-label={tool.label}
-                      aria-pressed={mode === tool.mode}
-                      disabled={disabled}
-                      className="rounded-full"
-                      onClick={() => setMode(tool.mode)}
-                    />
-                  }
-                >
-                  <tool.icon />
-                </TooltipTrigger>
-                <TooltipContent>
-                  {tool.label}，{tool.key}
-                </TooltipContent>
-              </Tooltip>
-            )
-          })}
-          <span
-            aria-hidden
-            className="mx-1 h-6 w-px shrink-0 bg-border max-sm:hidden"
-          />
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant={listOpen ? "default" : "ghost"}
-                  aria-label="所有便利貼"
-                  aria-pressed={listOpen}
-                  className="rounded-full max-sm:px-2"
-                  onClick={() => setListOpen(!listOpen)}
-                />
-              }
-            >
-              <MessageSquareTextIcon />
-              {open}
-            </TooltipTrigger>
-            <TooltipContent>所有便利貼</TooltipContent>
-          </Tooltip>
-          {actions}
-        </Toolbar>
+          <Toolbar aria-label="工具" className="max-w-full overflow-x-auto">
+            {tools.map((tool) => {
+              const disabled = tool.mode !== "read" && !canComment
+              return (
+                <Tooltip key={tool.mode}>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        variant={mode === tool.mode ? "default" : "ghost"}
+                        size="icon"
+                        aria-label={tool.label}
+                        aria-pressed={mode === tool.mode}
+                        disabled={disabled}
+                        className="rounded-full"
+                        onClick={() => setMode(tool.mode)}
+                      />
+                    }
+                  >
+                    <tool.icon />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {tool.label}，{tool.key}
+                  </TooltipContent>
+                </Tooltip>
+              )
+            })}
+            <span
+              aria-hidden
+              className="mx-1 h-6 w-px shrink-0 bg-border max-sm:hidden"
+            />
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant={listOpen ? "default" : "ghost"}
+                    aria-label="所有便利貼"
+                    aria-pressed={listOpen}
+                    className="rounded-full max-sm:px-2"
+                    onClick={() => setListOpen(!listOpen)}
+                  />
+                }
+              >
+                <MessageSquareTextIcon />
+                {open}
+              </TooltipTrigger>
+              <TooltipContent>所有便利貼</TooltipContent>
+            </Tooltip>
+            {actions}
+          </Toolbar>
+        </div>
       </div>
-    </div>
+    </HistoryContext>
   )
 }
 
