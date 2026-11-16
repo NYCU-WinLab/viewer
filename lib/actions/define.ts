@@ -74,7 +74,7 @@ export async function runAction<Input extends z.ZodObject, Output>(
 }
 
 /** Whether the user came in through a guest link. */
-async function isGuest(userId: string) {
+export async function isGuest(userId: string) {
   if (!userId) return false
   const [row] = await db
     .select({ guestLinkId: user.guestLinkId })

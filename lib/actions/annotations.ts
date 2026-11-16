@@ -3,7 +3,7 @@ import { alias } from "drizzle-orm/pg-core"
 import { z } from "zod"
 
 import { requireAccess } from "@/lib/actions/access"
-import { type Actor, defineAction } from "@/lib/actions/define"
+import { type Actor, defineAction, isGuest } from "@/lib/actions/define"
 import { db } from "@/lib/db"
 import {
   annotations,
@@ -44,6 +44,12 @@ async function documentOf(annotationId: string) {
   return row.documentId
 }
 
+/** Whether the member may resolve or reopen a mark: anyone with comment
+ * access may, except that a guest may only for their own marks. */
+function mayResolve(actor: Actor, guest: boolean, authorId: string | null) {
+  return !guest || authorId === actor.userId
+}
+
 const resolver = alias(user, "resolver")
 
 export const listAnnotations = defineAction({
@@ -56,6 +62,7 @@ export const listAnnotations = defineAction({
   input: z.object({ id: uuid, version: z.number().int().positive() }),
   run: async (actor, { id, version }) => {
     await requireAccess(actor, id, "view")
+    const guest = await isGuest(actor.userId)
     const marks = await db
       .select({
         id: annotations.id,
@@ -115,6 +122,7 @@ export const listAnnotations = defineAction({
     return marks.map((mark) => ({
       ...mark,
       mine: mark.authorId === actor.userId,
+      resolvable: mayResolve(actor, guest, mark.authorId),
       resolvedAt: mark.resolvedAt?.toISOString() ?? null,
       createdAt: mark.createdAt.toISOString(),
       comments: notes
@@ -222,12 +230,18 @@ export const resolveAnnotation = defineAction({
   name: "resolve_annotation",
   title: "標記已處理",
   description:
-    "Marks a mark as handled (resolved: true) or opens it again (false). Needs comment access.",
+    "Marks a mark as handled (resolved: true) or opens it again (false). Needs comment access; a guest may do it only for their own marks.",
   kind: "mutation",
   guests: true,
   input: z.object({ id: uuid, resolved: z.boolean() }),
   run: async (actor, { id, resolved }) => {
     await requireAccess(actor, await documentOf(id), "comment")
+    const [mark] = await db
+      .select({ authorId: annotations.authorId })
+      .from(annotations)
+      .where(eq(annotations.id, id))
+    if (!mayResolve(actor, await isGuest(actor.userId), mark.authorId))
+      throw new Error("訪客只能處理自己的標記")
     await db
       .update(annotations)
       .set(

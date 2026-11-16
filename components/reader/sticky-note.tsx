@@ -222,7 +222,9 @@ export function StickyNote({
                             <p className="m-auto">沒有留言</p>
                           )}
                         </ContextMenuTrigger>
-                        {(canComment || mark.mine || canManage) && (
+                        {((canComment && mark.resolvable) ||
+                          mark.mine ||
+                          canManage) && (
                           <ContextMenuContent>{markActions}</ContextMenuContent>
                         )}
                       </ContextMenu>
@@ -255,7 +257,7 @@ export function MarkActions({
 }) {
   return (
     <>
-      {canComment && (
+      {canComment && mark.resolvable && (
         <ContextMenuItem
           onClick={async () => {
             if (

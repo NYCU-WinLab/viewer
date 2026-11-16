@@ -247,9 +247,9 @@ export function PdfPage({
                 <ContextMenuItem onClick={() => onNote(mark.id)}>
                   便利貼
                 </ContextMenuItem>
-                {(canComment || mark.mine || canManage) && (
-                  <ContextMenuSeparator />
-                )}
+                {((canComment && mark.resolvable) ||
+                  mark.mine ||
+                  canManage) && <ContextMenuSeparator />}
                 <MarkActions
                   mark={mark}
                   canComment={canComment}
