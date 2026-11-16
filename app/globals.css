@@ -378,6 +378,67 @@
   max-height: calc(100dvh - 11rem);
 }
 
+/* The rail the list of sticky notes slides on. Wide screens: a column to
+   the right of the pages that opens from nothing, the list coming in from
+   the right. Narrow screens: a sheet that rises above the tool bar. Closed,
+   it is hidden once it has left. */
+.note-rail {
+  --rail-time: 200ms;
+  --rail-ease: cubic-bezier(0, 0, 0.2, 1);
+  position: fixed;
+  z-index: 30;
+  inset-inline: 1rem;
+  bottom: 5rem;
+  visibility: hidden;
+  opacity: 0;
+  translate: 0 1.5rem;
+  transition:
+    translate var(--rail-time) var(--rail-ease),
+    opacity var(--rail-time) var(--rail-ease),
+    width var(--rail-time) var(--rail-ease),
+    margin var(--rail-time) var(--rail-ease),
+    padding var(--rail-time) var(--rail-ease),
+    visibility 0s linear var(--rail-time);
+  & > aside {
+    transition: translate var(--rail-time) var(--rail-ease);
+  }
+  &[data-open] {
+    visibility: visible;
+    opacity: 1;
+    translate: 0 0;
+    transition-delay: 0s;
+  }
+  @media (min-width: 64rem) {
+    position: sticky;
+    top: 5rem;
+    bottom: auto;
+    inset-inline: auto;
+    flex-shrink: 0;
+    /* Closed, it takes no room, not even the gap before it. */
+    width: 0;
+    margin-inline: -1.5rem 0;
+    padding-inline: 0;
+    overflow-x: clip;
+    opacity: 1;
+    translate: 0 0;
+    & > aside {
+      translate: 100% 0;
+    }
+    /* Half a rem on each side keeps the list's shadow inside the clip. */
+    &[data-open] {
+      width: 19rem;
+      margin-inline: -0.5rem;
+      padding-inline: 0.5rem;
+      & > aside {
+        translate: 0 0;
+      }
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    --rail-time: 0s;
+  }
+}
+
 /* Inside Nextcloud's frame (app/layout.tsx sets data-embedded). */
 html[data-embedded] [data-slot="corner-top-left"] {
   display: none;

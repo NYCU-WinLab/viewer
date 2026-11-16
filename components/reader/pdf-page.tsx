@@ -204,7 +204,7 @@ export function PdfPage({
     <div
       ref={frame}
       data-page={number}
-      className="relative mx-auto bg-background shadow-md"
+      className="relative mx-auto w-full bg-background shadow-md"
     >
       {/* The frame takes its size from the canvas; the canvas is sized by
           its width and height attributes before it draws. */}
