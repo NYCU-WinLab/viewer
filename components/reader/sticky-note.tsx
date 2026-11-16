@@ -12,6 +12,7 @@ import {
   uncomment,
   unmark,
 } from "@/app/actions"
+import { useRecord } from "@/components/reader/history"
 import {
   type Mentionable,
   WithMentions,
@@ -78,7 +79,6 @@ export function StickyNote({
   canManage,
   onClose,
   onChanged,
-  onCommented,
   ask,
   people = [],
 }: {
@@ -89,8 +89,6 @@ export function StickyNote({
   canManage: boolean
   onClose: () => void
   onChanged: () => void
-  /** A note was added, for the reader's undo. */
-  onCommented?: (id: string, body: string) => void
   /** What Claude is shown of the mark; absent when Claude is not set up.
    * A note that mentions @Claude then gets its reply. */
   ask?: () => { context: string; image?: string }
@@ -98,6 +96,7 @@ export function StickyNote({
   people?: string[]
 }) {
   const mentions = mentionables(people, !!ask)
+  const record = useRecord()
   const [writing, setWriting] = React.useState(
     canComment && mark.comments.length === 0
   )
@@ -144,7 +143,12 @@ export function StickyNote({
     if (result.error) toast.error(result.error)
     const ok = !result.error
     if (result.data) {
-      onCommented?.(result.data.id, body)
+      record({
+        kind: "comment",
+        id: result.data.id,
+        annotationId: mark.id,
+        body,
+      })
       setSent(body)
       setDraft("")
       setWaitFor(mark.comments.length + 1)
@@ -228,6 +232,7 @@ export function StickyNote({
                     {layer.kind === "comment" ? (
                       <CommentNote
                         note={layer.note}
+                        annotationId={mark.id}
                         canComment={canComment && !showDraft}
                         onAdd={() => {
                           setRaised(null)
@@ -297,17 +302,17 @@ export function MarkActions({
   onDeleted?: () => void
   onChanged: () => void
 }) {
+  const record = useRecord()
   return (
     <>
       {canComment && mark.resolvable && (
         <ContextMenuItem
           onClick={async () => {
-            if (
-              await attempt(
-                resolve({ id: mark.id, resolved: !mark.resolvedAt })
-              )
-            )
+            const resolved = !mark.resolvedAt
+            if (await attempt(resolve({ id: mark.id, resolved }))) {
+              record({ kind: "resolve", id: mark.id, resolved })
               onChanged()
+            }
           }}
         >
           {mark.resolvedAt ? "重新打開" : "已處理"}
@@ -318,6 +323,20 @@ export function MarkActions({
           variant="destructive"
           onClick={async () => {
             if (await attempt(unmark({ id: mark.id }))) {
+              const notes = mark.comments.filter((note) => note.mine)
+              record({
+                kind: "unmark",
+                id: mark.id,
+                draft: {
+                  tool: mark.tool,
+                  page: mark.page,
+                  geometry: mark.geometry,
+                  quote: mark.quote ?? undefined,
+                },
+                resolved: !!mark.resolvedAt,
+                notes: notes.map(({ id, body }) => ({ id, body })),
+                lost: mark.comments.length - notes.length,
+              })
               onDeleted?.()
               onChanged()
             }
@@ -419,12 +438,14 @@ function NoteText({
 // mark's actions.
 function CommentNote({
   note,
+  annotationId,
   canComment,
   onAdd,
   onChanged,
   children,
 }: {
   note: Comment
+  annotationId: string
   canComment: boolean
   onAdd: () => void
   onChanged: () => void
@@ -434,11 +455,18 @@ function CommentNote({
   const [editing, setEditing] = React.useState(false)
   const [text, setText] = React.useState(note.body)
   const [history, setHistory] = React.useState(false)
+  const record = useRecord()
 
   const save = async () => {
     if (!text.trim()) return
     if (text === note.body) return setEditing(false)
     if (await attempt(reword({ id: note.id, body: text }))) {
+      record({
+        kind: "reword",
+        id: note.id,
+        before: note.body,
+        after: text.trim(),
+      })
       setEditing(false)
       onChanged()
     }
@@ -510,7 +538,15 @@ function CommentNote({
           <ContextMenuItem
             variant="destructive"
             onClick={async () => {
-              if (await attempt(uncomment({ id: note.id }))) onChanged()
+              if (await attempt(uncomment({ id: note.id }))) {
+                record({
+                  kind: "uncomment",
+                  id: note.id,
+                  annotationId,
+                  body: note.body,
+                })
+                onChanged()
+              }
             }}
           >
             刪除留言
