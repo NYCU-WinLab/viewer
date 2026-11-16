@@ -127,9 +127,10 @@ export async function memberUserId(id: string) {
   })
 }
 
-/** Where to mail a member: the email Keycloak has for them now, else the
- * one their last sign-in left, or null when there is none (a member who
- * never signed in holds only a placeholder). */
+/** Where to mail a member: for a lab account, only the email Keycloak has
+ * now for an enabled account, never a stored one that may have moved on;
+ * otherwise the stored email, unless it is a placeholder. null when there
+ * is none; throws when Keycloak cannot answer. */
 export async function memberEmail(userId: string): Promise<string | null> {
   const [row] = await db
     .select({ email: user.email, sub: account.accountId })
@@ -141,8 +142,8 @@ export async function memberEmail(userId: string): Promise<string | null> {
     .where(and(eq(user.id, userId), isNull(user.guestLinkId)))
   if (!row) return null
   if (row.sub) {
-    const found = await findKeycloakUser(row.sub).catch(() => null)
-    if (found?.email && found.enabled !== false) return found.email
+    const found = await findKeycloakUser(row.sub)
+    return found?.email && found.enabled !== false ? found.email : null
   }
   return row.email.endsWith(".invalid") ? null : row.email
 }

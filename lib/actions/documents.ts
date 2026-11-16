@@ -14,6 +14,7 @@ import {
   documents,
   documentVersions,
   type DocumentKind,
+  shareNotices,
   user,
 } from "@/lib/db/schema"
 import { deleteDocumentFiles, putDocumentFiles } from "@/lib/nextcloud"
@@ -359,7 +360,7 @@ export const shareDocument = defineAction({
   name: "share_document",
   title: "共用文件",
   description:
-    "Shares a document with a lab member (id from list_members) as view, comment or edit, or changes their role. Needs edit access; only the owner can hand out edit or change an editor's role. A member who had no access is mailed a link to the document from the lab's address through portal.winlab.tw; mailed says whether that worked and mailError why not (the share holds either way). A role change sends no mail.",
+    "Shares a document with a lab member (id from list_members) as view, comment or edit, or changes their role. Needs edit access; only the owner can hand out edit or change an editor's role. A member who had no access is mailed a link to the document from the lab's address through portal.winlab.tw; mailed says whether that worked and mailError why not (the share holds either way). A role change sends no mail, nor does sharing again within a day of the last mail to that member about this document.",
   kind: "mutation",
   input: z.object({ id, memberId: z.string().min(1), role }),
   run: async (actor, input) => {
@@ -398,7 +399,21 @@ export const shareDocument = defineAction({
           target: [documentGrants.documentId, documentGrants.userId],
           set: { role: input.role, grantedBy: actor.userId },
         })
-      return { name: doc.name, added: !current }
+      // At most one mail a day per member and document, decided here under
+      // the document's lock, so unsharing and sharing again cannot flood
+      // their inbox. Claimed before mailing: a failed mail is not retried.
+      const notice = current
+        ? []
+        : await tx
+            .insert(shareNotices)
+            .values({ documentId: input.id, userId })
+            .onConflictDoUpdate({
+              target: [shareNotices.documentId, shareNotices.userId],
+              set: { sentAt: sql`now()` },
+              setWhere: sql`${shareNotices.sentAt} < now() - interval '1 day'`,
+            })
+            .returning({ userId: shareNotices.userId })
+      return { name: doc.name, added: notice.length > 0 }
     })
     const shared: {
       id: string
