@@ -41,8 +41,11 @@ export async function sendInvitation(input: {
   to: string
   url: string
   title: string
-  access: "view" | "comment"
-  expiresAt: Date
+  access: "view" | "comment" | "edit"
+  /** When it stops working; a member's share does not. */
+  expiresAt?: Date
+  /** A lab member, who opens the link by signing in. */
+  member?: boolean
 }) {
   const key = process.env.PORTAL_SERVICE_KEY
   if (!key) throw new Error("邀請信還沒設定")
@@ -57,7 +60,8 @@ export async function sendInvitation(input: {
       url: input.url,
       title: invitationTitle(input.title),
       access: input.access,
-      expiresAt: input.expiresAt.toISOString(),
+      expiresAt: input.expiresAt?.toISOString(),
+      member: input.member,
     }),
     signal: AbortSignal.timeout(10_000),
   })

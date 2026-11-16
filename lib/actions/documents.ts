@@ -4,7 +4,7 @@ import { and, desc, eq, inArray, or, sql } from "drizzle-orm"
 import { z } from "zod"
 
 import { accessTo, requireAccess } from "@/lib/actions/access"
-import { memberUserId } from "@/lib/actions/members"
+import { memberEmail, memberUserId } from "@/lib/actions/members"
 import { type Actor, defineAction } from "@/lib/actions/define"
 import { toPdf } from "@/lib/convert"
 import { db, type Db } from "@/lib/db"
@@ -17,6 +17,7 @@ import {
   user,
 } from "@/lib/db/schema"
 import { deleteDocumentFiles, putDocumentFiles } from "@/lib/nextcloud"
+import { canMail, sendInvitation } from "@/lib/portal"
 
 /** A transaction, as drizzle hands it to db.transaction's callback. */
 export type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0]
@@ -358,7 +359,7 @@ export const shareDocument = defineAction({
   name: "share_document",
   title: "共用文件",
   description:
-    "Shares a document with a lab member (id from list_members) as view, comment or edit, or changes their role. Needs edit access; only the owner can hand out edit or change an editor's role.",
+    "Shares a document with a lab member (id from list_members) as view, comment or edit, or changes their role. Needs edit access; only the owner can hand out edit or change an editor's role. A member who had no access is mailed a link to the document from the lab's address through portal.winlab.tw; mailed says whether that worked and mailError why not (the share holds either way). A role change sends no mail.",
   kind: "mutation",
   input: z.object({ id, memberId: z.string().min(1), role }),
   run: async (actor, input) => {
@@ -366,10 +367,10 @@ export const shareDocument = defineAction({
     if (input.role === "edit" && access !== "owner")
       throw new Error("只有擁有者可以給編輯權限")
     const userId = await memberUserId(input.memberId)
-    await db.transaction(async (tx) => {
+    const { name, added } = await db.transaction(async (tx) => {
       // Locks the document's row, so two shares cannot race past the check.
       const [doc] = await tx
-        .select({ ownerId: documents.ownerId })
+        .select({ ownerId: documents.ownerId, name: documents.name })
         .from(documents)
         .where(eq(documents.id, input.id))
         .for("update")
@@ -397,8 +398,33 @@ export const shareDocument = defineAction({
           target: [documentGrants.documentId, documentGrants.userId],
           set: { role: input.role, grantedBy: actor.userId },
         })
+      return { name: doc.name, added: !current }
     })
-    return { id: input.id, userId, role: input.role }
+    const shared: {
+      id: string
+      userId: string
+      role: typeof input.role
+      mailed: boolean
+      mailError?: string
+    } = { id: input.id, userId, role: input.role, mailed: false }
+    if (!added || !canMail()) return shared
+    try {
+      const to = await memberEmail(userId)
+      if (!to) throw new Error("這位成員沒有信箱")
+      await sendInvitation({
+        to,
+        url: `${process.env.BETTER_AUTH_URL}/d/${input.id}`,
+        title: name,
+        access: input.role,
+        member: true,
+      })
+      return { ...shared, mailed: true }
+    } catch (error) {
+      return {
+        ...shared,
+        mailError: error instanceof Error ? error.message : "寄信失敗",
+      }
+    }
   },
 })
 

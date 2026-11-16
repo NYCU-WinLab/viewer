@@ -255,6 +255,9 @@ function SharePanel({
   const add = async (id: string, as: RoleValue) => {
     const result = await share({ id: documentId, memberId: id, role: as })
     if (result.error) return toast.error(result.error)
+    if (result.data?.mailed) toast.success("已共用，也寄了通知信")
+    else if (result.data?.mailError)
+      toast.error(`已共用，通知信沒寄出：${result.data.mailError}`)
     setMemberId(null)
     refresh()
   }
