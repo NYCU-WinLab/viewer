@@ -12,7 +12,12 @@ import type { PDFDocumentProxy } from "pdfjs-dist"
 import * as React from "react"
 import { toast } from "sonner"
 
-import { mark as saveMark } from "@/app/actions"
+import {
+  comment as saveComment,
+  mark as saveMark,
+  uncomment,
+  unmark,
+} from "@/app/actions"
 import { PdfPage } from "@/components/reader/pdf-page"
 import { usePresence } from "@/components/reader/presence"
 import {
@@ -46,6 +51,12 @@ const tools: {
   { mode: "box", label: "框選", key: "R", icon: SquareDashedIcon },
   { mode: "pen", label: "原子筆", key: "P", icon: PenLineIcon },
 ]
+
+/** Something the reader just added, which Cmd+Z takes away again and
+ * Shift+Cmd+Z puts back. */
+type Step =
+  | { kind: "mark"; id: string; draft: Draft }
+  | { kind: "comment"; id: string; annotationId: string; body: string }
 
 /** Where the selected text sits in its page, with a little context on each
  * side, so the mark can be found again in a newer version. */
@@ -209,20 +220,84 @@ export function Reader({
   // A deleted mark (by anyone) simply has no note to show.
   const selectedMark = marks.find((m) => m.id === selected) ?? null
 
-  /** Saves a mark and gives its id; a failure is toasted. */
+  // What this reader added since opening the page, newest last, and what
+  // they took back. A mark put back gets a new id: `moved` follows it.
+  const done = React.useRef<Step[]>([])
+  const undone = React.useRef<Step[]>([])
+  const moved = React.useRef(new Map<string, string>())
+  const now = (id: string) => {
+    while (moved.current.has(id)) id = moved.current.get(id)!
+    return id
+  }
+
+  /** Saves a mark and gives its id; a failure is toasted. A new mark
+   * (not one put back) clears what was taken back. */
   const save = React.useCallback(
-    async (draft: Draft) => {
+    async (draft: Draft, again?: boolean) => {
       if (!canComment) return
       const result = await saveMark({ id: documentId, version, ...draft })
       if (!result.data) {
         toast.error(result.error ?? "標記失敗")
         return
       }
+      done.current.push({ kind: "mark", id: result.data.id, draft })
+      if (!again) undone.current = []
       router.refresh()
       return result.data.id
     },
     [canComment, documentId, version, router]
   )
+
+  /** Takes back the last mark or note this reader added. */
+  const undo = async () => {
+    const step = done.current.pop()
+    if (!step) return
+    const id = now(step.id)
+    // Someone's note on the mark would go with it.
+    if (
+      step.kind === "mark" &&
+      marks.find((m) => m.id === id)?.comments.length
+    ) {
+      done.current.push(step)
+      return toast.error("這個標記已有留言")
+    }
+    const result =
+      step.kind === "mark" ? await unmark({ id }) : await uncomment({ id })
+    if (result.error) {
+      done.current.push(step)
+      return toast.error(result.error)
+    }
+    undone.current.push(step)
+    if (step.kind === "mark") {
+      if (selected === id) setSelected(null)
+      setPicked(null)
+    }
+    router.refresh()
+  }
+
+  /** Puts back what was last taken back. */
+  const redo = async () => {
+    const step = undone.current.pop()
+    if (!step) return
+    if (step.kind === "mark") {
+      const id = await save(step.draft, true)
+      if (id) moved.current.set(now(step.id), id)
+      else undone.current.push(step)
+      return
+    }
+    const annotationId = now(step.annotationId)
+    const result = await saveComment({ annotationId, body: step.body })
+    if (!result.data) {
+      undone.current.push(step)
+      return toast.error(result.error ?? "留言失敗")
+    }
+    done.current.push({ ...step, id: result.data.id, annotationId })
+    router.refresh()
+  }
+  const history = React.useRef({ undo, redo })
+  React.useEffect(() => {
+    history.current = { undo, redo }
+  })
   // A box or a pen stroke is drawn to say something: its note opens.
   const draw = React.useCallback(
     async (draft: Draft) => {
@@ -302,12 +377,29 @@ export function Reader({
     if (id) setSelected(id)
   }
 
-  // V, H, R and P pick tools; Esc reads again and closes the note.
+  // V, H, R and P pick tools; Esc reads again and closes the note. Cmd+Z
+  // (Ctrl+Z) takes back the last mark or note, Shift+Cmd+Z (Ctrl+Y) puts it
+  // back; a field with words in it keeps its own undo.
   React.useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      const field =
+        event.target instanceof HTMLElement
+          ? event.target.closest("input, textarea, [contenteditable]")
+          : null
       const typing =
-        event.target instanceof HTMLElement &&
-        event.target.closest("input, textarea, [contenteditable]")
+        field && !(field instanceof HTMLTextAreaElement && field.value === "")
+      const key = event.key.toLowerCase()
+      const command = (event.metaKey || event.ctrlKey) && !event.altKey
+      if (
+        command &&
+        !typing &&
+        (key === "z" || (key === "y" && event.ctrlKey))
+      ) {
+        event.preventDefault()
+        if (key === "y" || event.shiftKey) history.current.redo()
+        else history.current.undo()
+        return
+      }
       if (typing || event.metaKey || event.ctrlKey || event.altKey) return
       if (event.key === "Escape") {
         setMode("read")
@@ -405,6 +497,15 @@ export function Reader({
           canManage={canManage}
           onClose={() => setSelected(null)}
           onChanged={() => router.refresh()}
+          onCommented={(id, body) => {
+            done.current.push({
+              kind: "comment",
+              id,
+              annotationId: selectedMark.id,
+              body,
+            })
+            undone.current = []
+          }}
         />
       )}
 

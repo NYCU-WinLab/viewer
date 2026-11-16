@@ -64,6 +64,7 @@ export function StickyNote({
   canManage,
   onClose,
   onChanged,
+  onCommented,
 }: {
   mark: Mark
   anchor: Element
@@ -72,6 +73,8 @@ export function StickyNote({
   canManage: boolean
   onClose: () => void
   onChanged: () => void
+  /** A note was added, for the reader's undo. */
+  onCommented?: (id: string, body: string) => void
 }) {
   const [writing, setWriting] = React.useState(
     canComment && mark.comments.length === 0
@@ -111,8 +114,11 @@ export function StickyNote({
     const body = draft.trim()
     if (!body || busy) return true
     setBusy(true)
-    const ok = await attempt(comment({ annotationId: mark.id, body }))
-    if (ok) {
+    const result = await comment({ annotationId: mark.id, body })
+    if (result.error) toast.error(result.error)
+    const ok = !result.error
+    if (result.data) {
+      onCommented?.(result.data.id, body)
       setSent(body)
       setDraft("")
       setWaitFor(mark.comments.length + 1)
