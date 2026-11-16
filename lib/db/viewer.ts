@@ -89,6 +89,22 @@ export const documentGrants = pgTable(
   ]
 )
 
+/** When a member was last mailed about a share of a document. Kept when
+ * the share is removed, so sharing again soon does not mail again. */
+export const shareNotices = pgTable(
+  "share_notices",
+  {
+    documentId: uuid()
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    userId: uuid()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    sentAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.documentId, table.userId] })]
+)
+
 export type Tool = "highlight" | "box" | "pen"
 
 /** Where a mark sits, in page fractions (0 to 1 from the top left), so it

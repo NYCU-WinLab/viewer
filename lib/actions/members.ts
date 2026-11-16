@@ -4,7 +4,7 @@ import { z } from "zod"
 import { defineAction } from "@/lib/actions/define"
 import { db } from "@/lib/db"
 import { account, user } from "@/lib/db/schema"
-import { labMembers } from "@/lib/keycloak"
+import { findKeycloakUser, labMembers } from "@/lib/keycloak"
 import { memberAvatar } from "@/lib/portal"
 
 export const listMembers = defineAction({
@@ -125,4 +125,25 @@ export async function memberUserId(id: string) {
     })
     return created.id
   })
+}
+
+/** Where to mail a member: for a lab account, only the email Keycloak has
+ * now for an enabled account, never a stored one that may have moved on;
+ * otherwise the stored email, unless it is a placeholder. null when there
+ * is none; throws when Keycloak cannot answer. */
+export async function memberEmail(userId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ email: user.email, sub: account.accountId })
+    .from(user)
+    .leftJoin(
+      account,
+      and(eq(account.userId, user.id), eq(account.providerId, "keycloak"))
+    )
+    .where(and(eq(user.id, userId), isNull(user.guestLinkId)))
+  if (!row) return null
+  if (row.sub) {
+    const found = await findKeycloakUser(row.sub)
+    return found?.email && found.enabled !== false ? found.email : null
+  }
+  return row.email.endsWith(".invalid") ? null : row.email
 }
