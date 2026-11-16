@@ -1,6 +1,7 @@
-import { and, eq, isNull, sql } from "drizzle-orm"
+import { and, eq, isNull, ne, sql } from "drizzle-orm"
 import { z } from "zod"
 
+import { CLAUDE_EMAIL } from "@/lib/actions/claude"
 import { defineAction } from "@/lib/actions/define"
 import { db } from "@/lib/db"
 import { account, user } from "@/lib/db/schema"
@@ -29,7 +30,7 @@ export const listMembers = defineAction({
           account,
           and(eq(account.userId, user.id), eq(account.providerId, "keycloak"))
         )
-        .where(isNull(user.guestLinkId)),
+        .where(and(isNull(user.guestLinkId), ne(user.email, CLAUDE_EMAIL))),
       // Without Keycloak, the list is who has signed in.
       labMembers().catch(() => []),
     ])

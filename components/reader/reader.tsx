@@ -18,6 +18,8 @@ import {
   uncomment,
   unmark,
 } from "@/app/actions"
+import { NoteSummary } from "@/components/reader/note-summary"
+import { contextOf, cutPage } from "@/components/reader/page-cut"
 import { PdfPage, noteCorner } from "@/components/reader/pdf-page"
 import { usePresence } from "@/components/reader/presence"
 import {
@@ -104,17 +106,65 @@ function selectionRects(range: Range, page: Element) {
   )
 }
 
+/** Whether a press lands on the buttons or what they opened. */
+const inside = (target: EventTarget | null) =>
+  target instanceof Element &&
+  !!target.closest("[data-selection-actions], [data-slot=popover-content]")
+
+/** A box's buttons, at its bottom right, with the page's text for
+ * Claude. */
+function boxPicked(
+  markId: string,
+  page: number,
+  rect: [number, number, number, number]
+) {
+  return {
+    page,
+    x: rect[0] + rect[2],
+    y: rect[1] + rect[3],
+    text: "",
+    context: contextOf(page),
+    rect,
+    markId,
+  }
+}
+
+/** What Claude is shown of a mark when someone asks it in a sticky note:
+ * the page's text around the mark, and a cut of the page for a box or a
+ * pen stroke. */
+function claudeSees(mark: Mark) {
+  const text = mark.quote?.exact ?? ""
+  if (mark.tool === "highlight") return { context: contextOf(mark.page, text) }
+  const points =
+    "rects" in mark.geometry
+      ? mark.geometry.rects.flatMap(([x, y, w, h]) => [
+          [x, y],
+          [x + w, y + h],
+        ])
+      : mark.geometry.points
+  const xs = points.map(([x]) => x)
+  const ys = points.map(([, y]) => y)
+  // A pen stroke circles or points at something: cut a margin around it.
+  const pad = mark.tool === "pen" ? 0.05 : 0
+  const left = Math.max(0, Math.min(...xs) - pad)
+  const top = Math.max(0, Math.min(...ys) - pad)
+  const right = Math.min(1, Math.max(...xs) + pad)
+  const bottom = Math.min(1, Math.max(...ys) + pad)
+  const image = cutPage(mark.page, [left, top, right - left, bottom - top])
+  return { context: contextOf(mark.page), image: image ?? undefined }
+}
+
 // The whole document, page under page, with the tool bar floating at the
 // bottom. Marks and their sticky notes come from the server and refresh
-// live. Selecting text shows two small buttons where it ends (sticky note,
-// translate); a box or a pen stroke opens its sticky note at once.
+// live. Selecting text or drawing a box shows small buttons where it ends
+// (sticky note, translate, explain); a pen stroke opens its sticky note.
 export function Reader({
   documentId,
   version,
   marks,
   canComment,
   canManage,
-  canTranslate,
+  canAsk,
   actions,
 }: {
   documentId: string
@@ -122,8 +172,8 @@ export function Reader({
   marks: Mark[]
   canComment: boolean
   canManage: boolean
-  /** The translator is set up. */
-  canTranslate: boolean
+  /** Claude is set up: translate, explain, reply in notes, sum up. */
+  canAsk: boolean
   /** More buttons for the tool bar: versions, sharing. */
   actions?: React.ReactNode
 }) {
@@ -304,25 +354,31 @@ export function Reader({
   React.useEffect(() => {
     history.current = { undo, redo }
   })
-  // A box or a pen stroke is drawn to say something: its note opens.
+  // A pen stroke is drawn to say something: its note opens. A box shows
+  // its buttons (sticky note, explain).
   const draw = React.useCallback(
     async (draft: Draft) => {
       const id = await save(draft)
-      if (id) setSelected(id)
+      if (!id) return
+      if (draft.tool === "box" && "rects" in draft.geometry)
+        setPicked(boxPicked(id, draft.page, draft.geometry.rects[0]))
+      else setSelected(id)
     },
     [save]
   )
 
   // When the pointer lifts on selected text, its buttons appear where it
   // ends. The highlighter marks the text first; reading leaves it selected.
+  // A press anywhere else hides them, with any tool.
   React.useEffect(() => {
-    if (mode !== "read" && mode !== "highlight") return
-    const inside = (target: EventTarget | null) =>
-      target instanceof Element &&
-      !!target.closest("[data-selection-actions], [data-slot=popover-content]")
     const onDown = (event: PointerEvent) => {
       if (!inside(event.target)) setPicked(null)
     }
+    document.addEventListener("pointerdown", onDown)
+    return () => document.removeEventListener("pointerdown", onDown)
+  }, [])
+  React.useEffect(() => {
+    if (mode !== "read" && mode !== "highlight") return
     const onUp = async (event: PointerEvent) => {
       if (inside(event.target)) return
       const selection = window.getSelection()
@@ -366,12 +422,8 @@ export function Reader({
         draft,
       })
     }
-    document.addEventListener("pointerdown", onDown)
     document.addEventListener("pointerup", onUp)
-    return () => {
-      document.removeEventListener("pointerdown", onDown)
-      document.removeEventListener("pointerup", onUp)
-    }
+    return () => document.removeEventListener("pointerup", onUp)
   }, [mode, save])
 
   /** The sticky note of the selection, on the mark it has or gets now. */
@@ -431,9 +483,14 @@ export function Reader({
   }
 
   /** A click on a mark: a highlight shows its buttons (sticky note,
-   * translate), a box or a pen stroke opens its sticky note. */
+   * translate, explain), a box its sticky note and explain buttons, a pen
+   * stroke opens its sticky note. */
   const pick = (id: string) => {
     const mark = marks.find((m) => m.id === id)
+    if (mark?.tool === "box" && "rects" in mark.geometry) {
+      setSelected(null)
+      return setPicked(boxPicked(id, mark.page, mark.geometry.rects[0]))
+    }
     if (!mark || mark.tool !== "highlight") return setSelected(id)
     const [x, y] = noteCorner(mark)
     const last = "rects" in mark.geometry ? mark.geometry.rects.at(-1)! : null
@@ -531,6 +588,14 @@ export function Reader({
           aria-label="所有便利貼"
           className="flex note-list w-72 flex-col overflow-y-auto rounded-menu border border-border bg-overlay p-1 shadow-md backdrop-blur-md max-lg:max-h-80 max-lg:w-auto"
         >
+          {canAsk && noted.length > 0 && (
+            <NoteSummary
+              documentId={documentId}
+              version={version}
+              marks={noted}
+              onPick={(mark) => focus(mark)}
+            />
+          )}
           <MarkList
             marks={noted}
             onPick={(mark) => {
@@ -548,7 +613,7 @@ export function Reader({
           documentId={documentId}
           picked={picked}
           onNote={canComment ? note : undefined}
-          canTranslate={canTranslate}
+          canAsk={canAsk}
         />
       )}
 
@@ -561,6 +626,7 @@ export function Reader({
           canManage={canManage}
           onClose={() => setSelected(null)}
           onChanged={() => router.refresh()}
+          ask={canAsk ? () => claudeSees(selectedMark) : undefined}
           onCommented={(id, body) => {
             done.current.push({
               kind: "comment",
