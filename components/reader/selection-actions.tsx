@@ -13,7 +13,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
-import type { Translation } from "@/lib/llm"
+import type { Translation } from "@/lib/anthropic"
 
 /** Text the reader just selected: where it ends on its page (in page
  * fractions), and the words around it for the translator. */

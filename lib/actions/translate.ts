@@ -2,7 +2,7 @@ import { z } from "zod"
 
 import { requireAccess } from "@/lib/actions/access"
 import { defineAction } from "@/lib/actions/define"
-import { translate } from "@/lib/llm"
+import { translate } from "@/lib/anthropic"
 
 // Lowercase, matching how ids are stored and named in Nextcloud.
 const uuid = z.uuid().transform((value) => value.toLowerCase())
