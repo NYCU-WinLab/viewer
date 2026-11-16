@@ -18,7 +18,7 @@ import {
   uncomment,
   unmark,
 } from "@/app/actions"
-import { PdfPage } from "@/components/reader/pdf-page"
+import { PdfPage, noteCorner } from "@/components/reader/pdf-page"
 import { usePresence } from "@/components/reader/presence"
 import {
   type Picked,
@@ -27,12 +27,7 @@ import {
 import { StickyNote, formatWhen } from "@/components/reader/sticky-note"
 import type { Draft, Mark, Mode } from "@/components/reader/types"
 import { Button } from "@/components/ui/button"
-import {
-  Toolbar,
-  ToolbarPanel,
-  ToolbarPanelContent,
-  ToolbarPanelTrigger,
-} from "@/components/ui/toolbar"
+import { Toolbar } from "@/components/ui/toolbar"
 import {
   Tooltip,
   TooltipContent,
@@ -148,7 +143,7 @@ export function Reader({
   // The text just selected, with the mark the highlighter made of it or
   // the one a sticky note would need.
   const [picked, setPicked] = React.useState<
-    (Picked & { markId?: string; draft: Draft }) | null
+    (Picked & { markId?: string; draft?: Draft }) | null
   >(null)
   const [failed, setFailed] = React.useState(false)
   const [listOpen, setListOpen] = React.useState(false)
@@ -371,7 +366,7 @@ export function Reader({
   /** The sticky note of the selection, on the mark it has or gets now. */
   const note = async () => {
     if (!picked) return
-    const id = picked.markId ?? (await save(picked.draft))
+    const id = picked.markId ?? (picked.draft && (await save(picked.draft)))
     window.getSelection()?.removeAllRanges()
     setPicked(null)
     if (id) setSelected(id)
@@ -414,13 +409,44 @@ export function Reader({
     return () => window.removeEventListener("keydown", onKey)
   }, [canComment])
 
-  const open = marks.filter((m) => !m.resolvedAt).length
+  const noted = marks.filter((m) => m.comments.length > 0)
+  const open = noted.filter((m) => !m.resolvedAt).length
 
   const focus = (mark: Mark) => {
-    document
-      .querySelector(`[data-page="${mark.page}"]`)
-      ?.scrollIntoView({ behavior: "smooth", block: "start" })
+    const page = document.querySelector(`[data-page="${mark.page}"]`)
+    const shape = page?.querySelector(`[data-mark="${mark.id}"]`)
+    ;(shape ?? page)?.scrollIntoView({ behavior: "smooth", block: "center" })
     setSelected(mark.id)
+  }
+
+  /** A click on a mark: a highlight shows its buttons (sticky note,
+   * translate), a box or a pen stroke opens its sticky note. */
+  const pick = (id: string) => {
+    const mark = marks.find((m) => m.id === id)
+    if (!mark || mark.tool !== "highlight") return setSelected(id)
+    const [x, y] = noteCorner(mark)
+    const last = "rects" in mark.geometry ? mark.geometry.rects.at(-1)! : null
+    const text = mark.quote?.exact ?? ""
+    const pageText = (
+      document.querySelector(`[data-page="${mark.page}"] .textLayer`)
+        ?.textContent ?? ""
+    ).replace(/\s+/g, " ")
+    const at = text ? pageText.indexOf(text) : -1
+    setSelected(null)
+    setPicked({
+      page: mark.page,
+      x,
+      y: last ? last[1] + last[3] : y,
+      text: text.slice(0, 2000),
+      context:
+        at < 0
+          ? `${mark.quote?.prefix ?? ""}${text}${mark.quote?.suffix ?? ""}`.slice(
+              0,
+              4000
+            )
+          : pageText.slice(Math.max(0, at - 800), at + text.length + 800),
+      markId: mark.id,
+    })
   }
 
   // My pointer, as a page and a point in page fractions, for the others.
@@ -443,12 +469,12 @@ export function Reader({
   )
 
   return (
-    <div className="flex flex-col gap-6 pb-24">
+    <div className="flex items-start gap-6 pb-24">
       <div
         ref={column}
         onPointerMove={track}
         onPointerLeave={() => presence?.move(null)}
-        className="mx-auto flex w-full max-w-5xl flex-col gap-6"
+        className="mx-auto flex w-full max-w-5xl min-w-0 flex-1 flex-col gap-6"
       >
         {failed && (
           <p className="text-center text-destructive">這份文件打不開</p>
@@ -468,7 +494,11 @@ export function Reader({
               marks={marks.filter((m) => m.page === index + 1)}
               mode={mode}
               selected={selected}
-              onSelect={setSelected}
+              onSelect={pick}
+              onNote={(id) => {
+                setPicked(null)
+                setSelected(id)
+              }}
               onDraft={draw}
               cursors={others.filter((v) => v.cursor.page === index + 1)}
               canComment={canComment}
@@ -478,9 +508,27 @@ export function Reader({
           ))}
       </div>
 
+      {/* Every sticky note of this version, in a column beside the pages
+          (a sheet above the tool bar on a narrow screen). */}
+      {listOpen && (
+        <aside
+          aria-label="所有便利貼"
+          className="sticky top-20 flex note-list w-72 shrink-0 flex-col overflow-y-auto rounded-menu border border-border bg-overlay p-1 shadow-md backdrop-blur-md max-lg:fixed max-lg:inset-x-4 max-lg:top-auto max-lg:bottom-20 max-lg:z-30 max-lg:max-h-80 max-lg:w-auto"
+        >
+          <MarkList
+            marks={noted}
+            onPick={(mark) => {
+              if (!window.matchMedia("(min-width: 64rem)").matches)
+                setListOpen(false)
+              focus(mark)
+            }}
+          />
+        </aside>
+      )}
+
       {picked && (
         <SelectionActions
-          key={`${picked.page} ${picked.x} ${picked.y} ${picked.text}`}
+          key={`${picked.markId} ${picked.page} ${picked.x} ${picked.y} ${picked.text}`}
           documentId={documentId}
           picked={picked}
           onNote={canComment ? note : undefined}
@@ -543,25 +591,23 @@ export function Reader({
             aria-hidden
             className="mx-1 h-6 w-px shrink-0 bg-border max-sm:hidden"
           />
-          <ToolbarPanel open={listOpen} onOpenChange={setListOpen}>
-            <ToolbarPanelTrigger
+          <Tooltip>
+            <TooltipTrigger
               render={
-                <Button variant="ghost" className="rounded-full max-sm:px-2" />
+                <Button
+                  variant={listOpen ? "default" : "ghost"}
+                  aria-label="所有便利貼"
+                  aria-pressed={listOpen}
+                  className="rounded-full max-sm:px-2"
+                  onClick={() => setListOpen(!listOpen)}
+                />
               }
             >
               <MessageSquareTextIcon />
               {open}
-            </ToolbarPanelTrigger>
-            <ToolbarPanelContent>
-              <MarkList
-                marks={marks}
-                onPick={(mark) => {
-                  setListOpen(false)
-                  focus(mark)
-                }}
-              />
-            </ToolbarPanelContent>
-          </ToolbarPanel>
+            </TooltipTrigger>
+            <TooltipContent>所有便利貼</TooltipContent>
+          </Tooltip>
           {actions}
         </Toolbar>
       </div>
@@ -571,8 +617,8 @@ export function Reader({
 
 const toolNames = { highlight: "螢光筆", box: "框選", pen: "原子筆" } as const
 
-// Every mark of this version, open ones first: who, where, the first words
-// of its note. Picking one scrolls to it and opens its sticky note.
+// Every mark with a sticky note, open ones first: who, where, the words of
+// its first note. Picking one scrolls to it and opens its sticky note.
 function MarkList({
   marks,
   onPick,
@@ -581,14 +627,14 @@ function MarkList({
   onPick: (mark: Mark) => void
 }) {
   if (marks.length === 0)
-    return <p className="p-3 text-muted-foreground">還沒有標記</p>
+    return <p className="p-3 text-muted-foreground">還沒有便利貼</p>
   const sorted = [...marks].sort(
     (a, b) =>
       Number(Boolean(a.resolvedAt)) - Number(Boolean(b.resolvedAt)) ||
       a.page - b.page
   )
   return (
-    <ul className="flex max-h-96 flex-col overflow-y-auto">
+    <ul className="flex flex-col">
       {sorted.map((mark) => (
         <li key={mark.id}>
           <button
@@ -608,11 +654,14 @@ function MarkList({
                 {mark.resolvedAt && "，已處理"}
               </span>
             </span>
-            <span className="line-clamp-2">
-              {mark.comments[0]?.body ??
-                mark.quote?.exact ??
-                formatWhen(mark.createdAt)}
+            <span className="line-clamp-3 break-words">
+              {mark.comments[0]?.body ?? formatWhen(mark.createdAt)}
             </span>
+            {mark.comments.length > 1 && (
+              <span className="text-muted-foreground">
+                還有 {mark.comments.length - 1} 則
+              </span>
+            )}
           </button>
         </li>
       ))}

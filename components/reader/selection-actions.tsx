@@ -15,8 +15,12 @@ import {
 import { cn } from "@/lib/utils"
 import type { Translation } from "@/lib/anthropic"
 
-/** Text the reader just selected: where it ends on its page (in page
- * fractions), and the words around it for the translator. */
+/** Translations this page already asked for, by text and context. */
+const seen = new Map<string, Translation>()
+
+/** Text the reader just selected, or a highlight they clicked: where it
+ * ends on its page (in page fractions), and the words around it for the
+ * translator. */
 export type Picked = {
   page: number
   x: number
@@ -53,6 +57,7 @@ export function SelectionActions({
     [picked.x, picked.y]
   )
   const page = document.querySelector(`[data-page="${picked.page}"]`)
+  canTranslate &&= !!picked.text
   if (!page || (!onNote && !canTranslate)) return null
   return createPortal(
     <div
@@ -130,16 +135,22 @@ function TranslationPanel({
   anchor: Element
   onClose: () => void
 }) {
+  const key = `${picked.text}\n${picked.context}`
   const [result, setResult] = React.useState<
     { data: Translation } | { error: string } | null
-  >(null)
+  >(() => {
+    const data = seen.get(key)
+    return data ? { data } : null
+  })
   React.useEffect(() => {
+    if (seen.has(key)) return
     let cancelled = false
     translate({
       id: documentId,
       text: picked.text,
       context: picked.context,
     }).then((answer) => {
+      if (answer.data) seen.set(key, answer.data)
       if (cancelled) return
       setResult(
         answer.data ? { data: answer.data } : { error: answer.error ?? "" }
@@ -148,7 +159,7 @@ function TranslationPanel({
     return () => {
       cancelled = true
     }
-  }, [documentId, picked.text, picked.context])
+  }, [documentId, key, picked.text, picked.context])
 
   const data = result && "data" in result ? result.data : null
   return (

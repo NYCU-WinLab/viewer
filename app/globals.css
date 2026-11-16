@@ -372,6 +372,12 @@
   top: calc(var(--y) * 100%);
 }
 
+/* The list of sticky notes beside the pages: between the top corner and
+   the tool bar. */
+@utility note-list {
+  max-height: calc(100dvh - 11rem);
+}
+
 /* Inside Nextcloud's frame (app/layout.tsx sets data-embedded). */
 html[data-embedded] [data-slot="corner-top-left"] {
   display: none;

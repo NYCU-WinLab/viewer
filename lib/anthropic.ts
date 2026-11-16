@@ -44,6 +44,11 @@ Fill the fields this way:
 
 let client: Anthropic | undefined
 
+/** Translations already made, newest last, so the same selection answers
+ * at once (one server process; a deploy starts it empty). */
+const cache = new Map<string, Translation>()
+const cacheSize = 2000
+
 /** Translates the selected text, read in its context. Throws when the API
  * refuses or its answer does not fit the fields asked for. */
 export async function translate(input: {
@@ -51,31 +56,42 @@ export async function translate(input: {
   context: string
 }): Promise<Translation> {
   if (!canTranslate()) throw new Error("翻譯還沒設定")
+  const key = `${model()}\n${input.text}\n${input.context}`
+  const cached = cache.get(key)
+  if (cached) return cached
   client ??= new Anthropic()
-  const response = await client.beta.messages.parse(
-    {
-      model: model(),
-      max_tokens: 16000,
-      // A short answer a reader waits for: the lowest effort.
-      output_config: { effort: "low", format: zodOutputFormat(answer) },
-      // A decline is retried on the model the API picks for it.
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      system,
-      messages: [
-        {
-          role: "user",
-          content: `Context:\n${input.context}\n\nSelected text:\n${input.text}`,
-        },
-      ],
-    },
-    { timeout: 60_000 }
-  )
+  const ask = (speed?: "fast") =>
+    client!.beta.messages.parse(
+      {
+        model: model(),
+        max_tokens: 16000,
+        // A short answer a reader waits for: the lowest effort.
+        output_config: { effort: "low", format: zodOutputFormat(answer) },
+        speed,
+        // A decline is retried on the model the API picks for it.
+        betas: ["server-side-fallback-2026-07-01"],
+        fallbacks: "default",
+        system,
+        messages: [
+          {
+            role: "user",
+            content: `Context:\n${input.context}\n\nSelected text:\n${input.text}`,
+          },
+        ],
+      },
+      { timeout: 60_000 }
+    )
+  // Fast mode halves the wait and has its own rate limit: past it, the
+  // standard speed answers.
+  const response = await ask("fast").catch((error) => {
+    if (error instanceof Anthropic.RateLimitError) return ask()
+    throw error
+  })
   const data = response.parsed_output
   if (response.stop_reason === "refusal" || !data?.translation.trim())
     throw new Error(`no translation (stop_reason ${response.stop_reason})`)
   const word = data.kind === "word"
-  return {
+  const result: Translation = {
     kind: data.kind,
     translation: data.translation.trim(),
     partOfSpeech: (word && data.partOfSpeech?.trim()) || undefined,
@@ -83,4 +99,7 @@ export async function translate(input: {
     note: data.note?.trim() || undefined,
     examples: data.kind === "sentence" ? [] : data.examples.slice(0, 2),
   }
+  if (cache.size >= cacheSize) cache.delete(cache.keys().next().value!)
+  cache.set(key, result)
+  return result
 }

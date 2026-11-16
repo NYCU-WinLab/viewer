@@ -1,5 +1,6 @@
 "use client"
 
+import { MessageSquareTextIcon } from "lucide-react"
 import type { PDFDocumentProxy } from "pdfjs-dist"
 import * as React from "react"
 
@@ -43,6 +44,15 @@ function thin(points: [number, number][], width: number) {
   return kept
 }
 
+/** Where a mark's note paper sits: the top right corner of a highlight's
+ * last line or of a box, a pen stroke's last point. */
+export function noteCorner(mark: Mark): [number, number] {
+  if ("points" in mark.geometry) return mark.geometry.points.at(-1)!
+  const rects = mark.geometry.rects
+  const [x, y, w] = rects[rects.length - 1]
+  return [x + w, y]
+}
+
 export function strokePath(points: [number, number][]) {
   return points
     .map(([x, y], index) => `${index ? "L" : "M"}${x} ${y}`)
@@ -61,6 +71,7 @@ export function PdfPage({
   mode,
   selected,
   onSelect,
+  onNote,
   onDraft,
   cursors,
   canComment,
@@ -76,7 +87,10 @@ export function PdfPage({
   marks: Mark[]
   mode: Mode
   selected: string | null
+  /** A click on a mark. */
   onSelect: (id: string) => void
+  /** Opens a mark's sticky note. */
+  onNote: (id: string) => void
   onDraft: (draft: Draft) => void
   /** Other members' pointers on this page. */
   cursors: (Viewer & { cursor: NonNullable<Viewer["cursor"]> })[]
@@ -230,7 +244,7 @@ export function PdfPage({
             onSelect={() => onSelect(mark.id)}
             menu={
               <>
-                <ContextMenuItem onClick={() => onSelect(mark.id)}>
+                <ContextMenuItem onClick={() => onNote(mark.id)}>
                   便利貼
                 </ContextMenuItem>
                 {(canComment || mark.mine || canManage) && (
@@ -265,6 +279,39 @@ export function PdfPage({
           />
         )}
       </svg>
+      {/* A small paper on every mark that has a sticky note: it shows the
+          note is there, and opens it. */}
+      {marks
+        .filter((mark) => mark.comments.length > 0)
+        .map((mark) => {
+          const [x, y] = noteCorner(mark)
+          return (
+            <button
+              key={mark.id}
+              type="button"
+              ref={(element) => {
+                element?.style.setProperty("--x", String(x))
+                element?.style.setProperty("--y", String(y))
+              }}
+              data-note={mark.id}
+              data-paper={0}
+              aria-label={`便利貼，${mark.comments.length} 則`}
+              onClick={() => onNote(mark.id)}
+              className={cn(
+                "absolute page-point z-10 -m-2.5 box-content flex size-5 -translate-y-1/2 cursor-pointer items-center justify-center bg-clip-content p-2.5 text-body font-medium text-note-foreground",
+                mark.resolvedAt && "opacity-40"
+              )}
+            >
+              <span className="paper-note flex size-5 items-center justify-center">
+                {mark.comments.length > 1 ? (
+                  mark.comments.length
+                ) : (
+                  <MessageSquareTextIcon className="size-3" />
+                )}
+              </span>
+            </button>
+          )
+        })}
       {cursors.map((viewer) => (
         <RemoteCursor key={viewer.conn} viewer={viewer} />
       ))}
