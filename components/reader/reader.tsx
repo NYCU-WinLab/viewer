@@ -187,11 +187,22 @@ export function Reader({
   React.useEffect(() => {
     const element = column.current
     if (!element) return
-    const observer = new ResizeObserver(([entry]) =>
-      setWidth(Math.round(entry.contentRect.width))
-    )
+    // The first width draws at once; later ones wait until the column
+    // settles, so pages redraw once when the note list slides in or out.
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let first = true
+    const observer = new ResizeObserver(([entry]) => {
+      const next = Math.round(entry.contentRect.width)
+      clearTimeout(timer)
+      if (first) setWidth(next)
+      else timer = setTimeout(() => setWidth(next), 250)
+      first = false
+    })
     observer.observe(element)
-    return () => observer.disconnect()
+    return () => {
+      clearTimeout(timer)
+      observer.disconnect()
+    }
   }, [])
 
   // The sticky note sits next to its mark; look for the mark until it is
@@ -508,12 +519,17 @@ export function Reader({
           ))}
       </div>
 
-      {/* Every sticky note of this version, in a column beside the pages
-          (a sheet above the tool bar on a narrow screen). */}
-      {listOpen && (
+      {/* Every sticky note of this version, in a column that slides in
+          beside the pages (a sheet rising above the tool bar on a narrow
+          screen). */}
+      <div
+        data-open={listOpen ? "" : undefined}
+        inert={!listOpen}
+        className="note-rail"
+      >
         <aside
           aria-label="所有便利貼"
-          className="sticky top-20 flex note-list w-72 shrink-0 flex-col overflow-y-auto rounded-menu border border-border bg-overlay p-1 shadow-md backdrop-blur-md max-lg:fixed max-lg:inset-x-4 max-lg:top-auto max-lg:bottom-20 max-lg:z-30 max-lg:max-h-80 max-lg:w-auto"
+          className="flex note-list w-72 flex-col overflow-y-auto rounded-menu border border-border bg-overlay p-1 shadow-md backdrop-blur-md max-lg:max-h-80 max-lg:w-auto"
         >
           <MarkList
             marks={noted}
@@ -524,7 +540,7 @@ export function Reader({
             }}
           />
         </aside>
-      )}
+      </div>
 
       {picked && (
         <SelectionActions
