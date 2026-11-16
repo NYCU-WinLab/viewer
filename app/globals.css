@@ -365,6 +365,13 @@
     top 120ms linear;
 }
 
+/* The buttons for a selection, placed by --x and --y (fractions of its
+   page): where the selection ends. */
+@utility page-point {
+  left: calc(var(--x) * 100%);
+  top: calc(var(--y) * 100%);
+}
+
 /* Inside Nextcloud's frame (app/layout.tsx sets data-embedded). */
 html[data-embedded] [data-slot="corner-top-left"] {
   display: none;

@@ -32,6 +32,7 @@ import {
   syncNextcloudVersion,
   unlinkNextcloud,
 } from "@/lib/actions/nextcloud"
+import { translateText } from "@/lib/actions/translate"
 import { requireActor } from "@/lib/auth/session"
 
 // Every page's writes, one wrapper each. A failure comes back as { error }
@@ -70,6 +71,7 @@ export const resolve = async (input: unknown) => call(resolveAnnotation, input)
 export const comment = async (input: unknown) => call(addComment, input)
 export const reword = async (input: unknown) => call(editComment, input)
 export const uncomment = async (input: unknown) => call(deleteComment, input)
+export const translate = async (input: unknown) => call(translateText, input)
 
 export const loadNextcloudStatus = async () => call(nextcloudStatus, {})
 export const loadNextcloudFiles = async (input: unknown) =>

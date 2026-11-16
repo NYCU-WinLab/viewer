@@ -36,6 +36,7 @@ import {
   syncNextcloudVersion,
   unlinkNextcloud,
 } from "@/lib/actions/nextcloud"
+import { translateText } from "@/lib/actions/translate"
 import { whoami } from "@/lib/actions/users"
 
 /** Every action, in the order MCP lists them. */
@@ -57,6 +58,7 @@ export const actions: Action[] = [
   addComment,
   editComment,
   deleteComment,
+  translateText,
   listMembers,
   getMemberAvatar,
   createGuestLink,
