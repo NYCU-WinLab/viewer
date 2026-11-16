@@ -15,6 +15,10 @@ import { toast } from "sonner"
 import { mark as saveMark } from "@/app/actions"
 import { PdfPage } from "@/components/reader/pdf-page"
 import { usePresence } from "@/components/reader/presence"
+import {
+  type Picked,
+  SelectionActions,
+} from "@/components/reader/selection-actions"
 import { StickyNote, formatWhen } from "@/components/reader/sticky-note"
 import type { Draft, Mark, Mode } from "@/components/reader/types"
 import { Button } from "@/components/ui/button"
@@ -55,6 +59,18 @@ function quoteOf(pageText: string, exact: string) {
   }
 }
 
+/** The selection grown to whole words, so a drag that stops inside a word
+ * still translates the word. */
+function wholeWords(pageText: string, at: number, exact: string) {
+  if (at < 0) return exact
+  const letter = /[\p{L}\p{N}'’-]/u
+  let start = at
+  let end = at + exact.length
+  while (start > 0 && letter.test(pageText[start - 1])) start--
+  while (end < pageText.length && letter.test(pageText[end])) end++
+  return pageText.slice(start, end)
+}
+
 /** The selected lines on one page, as page fractions, one box per line. */
 function selectionRects(range: Range, page: Element) {
   const box = page.getBoundingClientRect()
@@ -84,13 +100,15 @@ function selectionRects(range: Range, page: Element) {
 
 // The whole document, page under page, with the tool bar floating at the
 // bottom. Marks and their sticky notes come from the server and refresh
-// live; a new mark opens its sticky note at once.
+// live. Selecting text shows two small buttons where it ends (sticky note,
+// translate); a box or a pen stroke opens its sticky note at once.
 export function Reader({
   documentId,
   version,
   marks,
   canComment,
   canManage,
+  canTranslate,
   actions,
 }: {
   documentId: string
@@ -98,6 +116,8 @@ export function Reader({
   marks: Mark[]
   canComment: boolean
   canManage: boolean
+  /** The translator is set up. */
+  canTranslate: boolean
   /** More buttons for the tool bar: versions, sharing. */
   actions?: React.ReactNode
 }) {
@@ -114,6 +134,11 @@ export function Reader({
   )
   const presence = usePresence()
   const [selected, setSelected] = React.useState<string | null>(null)
+  // The text just selected, with the mark the highlighter made of it or
+  // the one a sticky note would need.
+  const [picked, setPicked] = React.useState<
+    (Picked & { markId?: string; draft: Draft }) | null
+  >(null)
   const [failed, setFailed] = React.useState(false)
   const [listOpen, setListOpen] = React.useState(false)
 
@@ -184,21 +209,41 @@ export function Reader({
   // A deleted mark (by anyone) simply has no note to show.
   const selectedMark = marks.find((m) => m.id === selected) ?? null
 
+  /** Saves a mark and gives its id; a failure is toasted. */
   const save = React.useCallback(
     async (draft: Draft) => {
       if (!canComment) return
       const result = await saveMark({ id: documentId, version, ...draft })
-      if (!result.data) return toast.error(result.error ?? "標記失敗")
-      setSelected(result.data.id)
+      if (!result.data) {
+        toast.error(result.error ?? "標記失敗")
+        return
+      }
       router.refresh()
+      return result.data.id
     },
     [canComment, documentId, version, router]
   )
+  // A box or a pen stroke is drawn to say something: its note opens.
+  const draw = React.useCallback(
+    async (draft: Draft) => {
+      const id = await save(draft)
+      if (id) setSelected(id)
+    },
+    [save]
+  )
 
-  // The highlighter marks whatever text is selected when the pointer lifts.
+  // When the pointer lifts on selected text, its buttons appear where it
+  // ends. The highlighter marks the text first; reading leaves it selected.
   React.useEffect(() => {
-    if (mode !== "highlight") return
-    const onUp = () => {
+    if (mode !== "read" && mode !== "highlight") return
+    const inside = (target: EventTarget | null) =>
+      target instanceof Element &&
+      !!target.closest("[data-selection-actions], [data-slot=popover-content]")
+    const onDown = (event: PointerEvent) => {
+      if (!inside(event.target)) setPicked(null)
+    }
+    const onUp = async (event: PointerEvent) => {
+      if (inside(event.target)) return
       const selection = window.getSelection()
       if (!selection || selection.isCollapsed || !selection.rangeCount) return
       const range = selection.getRangeAt(0)
@@ -213,19 +258,49 @@ export function Reader({
       if (end && !end.contains(range.endContainer)) range.setEndAfter(end)
       const rects = selectionRects(range, page)
       const exact = range.toString().replace(/\s+/g, " ").trim()
-      selection.removeAllRanges()
+      if (mode === "highlight") selection.removeAllRanges()
       if (!rects.length || !exact) return
       const pageText = (end?.textContent ?? "").replace(/\s+/g, " ")
-      save({
+      const draft: Draft = {
         tool: "highlight",
         page: Number(page.getAttribute("data-page")),
         geometry: { rects: rects.slice(0, 200) },
         quote: quoteOf(pageText, exact.slice(0, 5000)),
+      }
+      const markId = mode === "highlight" ? await save(draft) : undefined
+      if (mode === "highlight" && !markId) return
+      const last = rects[rects.length - 1]
+      const at = pageText.indexOf(exact)
+      setPicked({
+        page: draft.page,
+        x: last[0] + last[2],
+        y: last[1] + last[3],
+        text: wholeWords(pageText, at, exact).slice(0, 2000),
+        // The paragraph around the selection, for the translator.
+        context:
+          at < 0
+            ? exact.slice(0, 2000)
+            : pageText.slice(Math.max(0, at - 800), at + exact.length + 800),
+        markId,
+        draft,
       })
     }
+    document.addEventListener("pointerdown", onDown)
     document.addEventListener("pointerup", onUp)
-    return () => document.removeEventListener("pointerup", onUp)
+    return () => {
+      document.removeEventListener("pointerdown", onDown)
+      document.removeEventListener("pointerup", onUp)
+    }
   }, [mode, save])
+
+  /** The sticky note of the selection, on the mark it has or gets now. */
+  const note = async () => {
+    if (!picked) return
+    const id = picked.markId ?? (await save(picked.draft))
+    window.getSelection()?.removeAllRanges()
+    setPicked(null)
+    if (id) setSelected(id)
+  }
 
   // V, H, R and P pick tools; Esc reads again and closes the note.
   React.useEffect(() => {
@@ -237,6 +312,7 @@ export function Reader({
       if (event.key === "Escape") {
         setMode("read")
         setSelected(null)
+        setPicked(null)
         return
       }
       const tool = tools.find((t) => t.key === event.key.toUpperCase())
@@ -301,7 +377,7 @@ export function Reader({
               mode={mode}
               selected={selected}
               onSelect={setSelected}
-              onDraft={save}
+              onDraft={draw}
               cursors={others.filter((v) => v.cursor.page === index + 1)}
               canComment={canComment}
               canManage={canManage}
@@ -309,6 +385,16 @@ export function Reader({
             />
           ))}
       </div>
+
+      {picked && (
+        <SelectionActions
+          key={`${picked.page} ${picked.x} ${picked.y} ${picked.text}`}
+          documentId={documentId}
+          picked={picked}
+          onNote={canComment ? note : undefined}
+          canTranslate={canTranslate}
+        />
+      )}
 
       {selectedMark && anchor && (
         <StickyNote
