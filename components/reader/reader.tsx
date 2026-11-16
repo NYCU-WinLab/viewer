@@ -165,6 +165,7 @@ export function Reader({
   canComment,
   canManage,
   canAsk,
+  people,
   actions,
 }: {
   documentId: string
@@ -174,6 +175,8 @@ export function Reader({
   canManage: boolean
   /** Claude is set up: translate, explain, reply in notes, sum up. */
   canAsk: boolean
+  /** Names of the others who can open the document, to mention. */
+  people: string[]
   /** More buttons for the tool bar: versions, sharing. */
   actions?: React.ReactNode
 }) {
@@ -627,6 +630,7 @@ export function Reader({
           onClose={() => setSelected(null)}
           onChanged={() => router.refresh()}
           ask={canAsk ? () => claudeSees(selectedMark) : undefined}
+          people={people}
           onCommented={(id, body) => {
             done.current.push({
               kind: "comment",
