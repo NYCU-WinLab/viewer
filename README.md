@@ -28,7 +28,7 @@ WinLab members upload a paper draft, a report or a deck, share it with the peopl
 - **Lists your documents**: your own and the ones shared with you, with how many marks are still open.
 - **Reads PDF, Word and PowerPoint**: docx and pptx turn into PDF at upload, with stand-in fonts at the same widths (Calibri, Times New Roman, Arial, DFKai-SB).
 - **Marks with 3 tools**: a highlighter on text, a box over any area (a figure, a table, a slide object) and a pen.
-- **Translates what you select**: a small button where the selection ends asks the lab model, with the paragraph as context. A word comes with its part of speech, pronunciation and examples, a phrase with its use, a sentence with a note on its paragraph.
+- **Translates what you select**: a small button where the selection ends asks Claude, with the paragraph as context. A word comes with its part of speech, pronunciation and examples, a phrase with its use, a sentence with a note on its paragraph.
 - **Keeps a sticky note on every mark**: comments with author and time, edit history, and a button that marks it resolved.
 - **Keeps versions**: upload a new file to the same document; every version stays readable with its own marks.
 - **Shares per member**: view, comment or edit.
@@ -65,21 +65,21 @@ viewer.winlab.tw deploys on every push to `main`. The release workflow retags th
 
 Set these in `.env`; [.env.example](.env.example) documents every one.
 
-| Key                                                          | What it sets                                                                                                  | Default                                              |
-| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| `POSTGRES_PASSWORD`                                          | The database password, used by every service                                                                  | required                                             |
-| `BETTER_AUTH_URL`                                            | The public URL; the MCP resource is `<url>/mcp`                                                               | required                                             |
-| `BETTER_AUTH_SECRET`                                         | Signs sessions and OAuth queries                                                                              | required                                             |
-| `KEYCLOAK_ISSUER`                                            | The realm URL, e.g. `https://auth.example.com/realms/lab`                                                     | required                                             |
-| `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET`               | The viewer's Keycloak client                                                                                  | required                                             |
-| `NEXTCLOUD_URL`, `NEXTCLOUD_USER`, `NEXTCLOUD_APP_PASSWORD`  | Where the files live                                                                                          | required                                             |
-| `NEXTCLOUD_ROOT`                                             | The folder in that account the viewer owns                                                                    | `viewer`                                             |
-| `NEXTCLOUD_OAUTH_CLIENT_ID`, `NEXTCLOUD_OAUTH_CLIENT_SECRET` | The Nextcloud OAuth 2 client members link their own account with; no Nextcloud import when empty              | empty                                                |
-| `PORTAL_URL`, `PORTAL_SERVICE_KEY`                           | Where guest invitations are mailed from: a portal service key allowed to send invitations; no mail when empty | `https://portal.winlab.tw`, empty                    |
-| `LLM_URL`, `LLM_API_KEY`, `LLM_MODEL`                        | The OpenAI compatible gateway that translates selected text; no translate button when the key is empty        | `https://llm.winlab.tw/v1`, empty, `qwen3.8-27b-fp8` |
-| `VIEWER_VERSION`                                             | Image tag                                                                                                     | `main`                                               |
-| `VIEWER_BIND`, `VIEWER_PORT`                                 | Where web listens on the host                                                                                 | `127.0.0.1`, `3000`                                  |
-| `OTEL_EXPORTER_OTLP_ENDPOINT`                                | OTLP/HTTP endpoint for traces and error logs; off when empty                                                  | empty                                                |
+| Key                                                          | What it sets                                                                                                  | Default                           |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| `POSTGRES_PASSWORD`                                          | The database password, used by every service                                                                  | required                          |
+| `BETTER_AUTH_URL`                                            | The public URL; the MCP resource is `<url>/mcp`                                                               | required                          |
+| `BETTER_AUTH_SECRET`                                         | Signs sessions and OAuth queries                                                                              | required                          |
+| `KEYCLOAK_ISSUER`                                            | The realm URL, e.g. `https://auth.example.com/realms/lab`                                                     | required                          |
+| `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET`               | The viewer's Keycloak client                                                                                  | required                          |
+| `NEXTCLOUD_URL`, `NEXTCLOUD_USER`, `NEXTCLOUD_APP_PASSWORD`  | Where the files live                                                                                          | required                          |
+| `NEXTCLOUD_ROOT`                                             | The folder in that account the viewer owns                                                                    | `viewer`                          |
+| `NEXTCLOUD_OAUTH_CLIENT_ID`, `NEXTCLOUD_OAUTH_CLIENT_SECRET` | The Nextcloud OAuth 2 client members link their own account with; no Nextcloud import when empty              | empty                             |
+| `PORTAL_URL`, `PORTAL_SERVICE_KEY`                           | Where guest invitations are mailed from: a portal service key allowed to send invitations; no mail when empty | `https://portal.winlab.tw`, empty |
+| `ANTHROPIC_API_KEY`, `TRANSLATE_MODEL`                       | The Claude API key and model that translate selected text; no translate button when the key is empty          | empty, `claude-opus-5-5`          |
+| `VIEWER_VERSION`                                             | Image tag                                                                                                     | `main`                            |
+| `VIEWER_BIND`, `VIEWER_PORT`                                 | Where web listens on the host                                                                                 | `127.0.0.1`, `3000`               |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`                                | OTLP/HTTP endpoint for traces and error logs; off when empty                                                  | empty                             |
 
 ## How it works
 

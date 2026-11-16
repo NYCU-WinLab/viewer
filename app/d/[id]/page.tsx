@@ -9,7 +9,7 @@ import { listAnnotations } from "@/lib/actions/annotations"
 import { runAction } from "@/lib/actions/define"
 import { getDocument } from "@/lib/actions/documents"
 import { getSession, requireActor } from "@/lib/auth/session"
-import { canTranslate } from "@/lib/llm"
+import { canTranslate } from "@/lib/anthropic"
 import { avatarUrl } from "@/lib/portal"
 
 export const dynamic = "force-dynamic"
