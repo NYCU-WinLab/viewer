@@ -1,5 +1,8 @@
+import { decodeJwt } from "jose"
+
 import { mcpResource } from "@/lib/auth"
 import { TokenRefused, verifyKeycloakToken } from "@/lib/auth/keycloak-token"
+import { legacyMcp } from "@/lib/auth/legacy-mcp"
 import { isLabMember } from "@/lib/auth/member"
 import { mcpHandler } from "@/lib/mcp/server"
 
@@ -23,12 +26,28 @@ const refuse = (status: number, message: string, error?: string) =>
     }
   )
 
+// Better Auth's own tokens name this site as issuer.
+const issuedHere = (token: string) => {
+  try {
+    const { iss } = decodeJwt(token)
+    return (
+      typeof iss === "string" &&
+      iss !== process.env.KEYCLOAK_ISSUER &&
+      new URL(iss).origin === new URL(mcpResource).origin
+    )
+  } catch {
+    return false
+  }
+}
+
 // The bearer token is a Keycloak access token for this /mcp. Its member is
 // the one every tool acts as.
 export async function POST(request: Request) {
   const header = request.headers.get("authorization") ?? ""
   const token = header.match(/^Bearer (\S+)$/i)?.[1]
   if (!token) return refuse(401, "sign in required")
+  // The unverified issuer only picks the path; each path verifies in full.
+  if (issuedHere(token)) return legacyMcp(request)
 
   let caller
   try {
