@@ -33,7 +33,7 @@ WinLab members upload a paper draft, a report or a deck, share it with the peopl
 - **Keeps versions**: upload a new file to the same document; every version stays readable with its own marks.
 - **Shares per member**: view, comment or edit.
 - **Updates live**: a mark or comment from anyone shows on every open page.
-- **Serves MCP** at `/mcp`, with the viewer as the OAuth 2.1 authorization server.
+- **Serves MCP** at `/mcp`, with Keycloak as the OAuth 2.1 authorization server.
 
 ## Deploy
 
@@ -59,7 +59,8 @@ viewer.winlab.tw deploys on every push to `main`. The release workflow retags th
 2. In Nextcloud, create an app password for the account that holds the files, create the folder `NEXTCLOUD_ROOT` in it, and put both in `.env`.
 3. Optional: to let members import from their own Nextcloud, create an OAuth 2 client there with the redirect URI `<BETTER_AUTH_URL>/nextcloud/callback` and put it in `.env`. To add "Open in Viewer" (在 Viewer 打開) to the Nextcloud file menu, build and install the app in [nextcloud/](nextcloud/) (`npm ci && npm run build`, then `./install.sh`).
 4. Open `BETTER_AUTH_URL`, sign in and press Upload (上傳) in the top right.
-5. Add the MCP server to a client, for example `claude mcp add --transport http viewer <BETTER_AUTH_URL>/mcp`, then ask it to call `whoami`.
+5. For MCP, create a public OpenID Connect client in the same realm (`viewer-mcp`): standard flow with PKCE S256, the redirect URI `http://localhost:3118/callback`, and an audience mapper that adds `<BETTER_AUTH_URL>/mcp` to the access token. [NYCU-WinLab/pki](https://github.com/NYCU-WinLab/pki) `keycloak/apply-mcp-client.sh` does this from a JSON file.
+6. Sign in on the website once, so your account exists here. Then add the MCP server to a client, for example `claude mcp add --transport http viewer <BETTER_AUTH_URL>/mcp --client-id viewer-mcp --callback-port 3118`, and ask it to call `whoami`.
 
 ## Configure
 
@@ -72,6 +73,7 @@ Set these in `.env`; [.env.example](.env.example) documents every one.
 | `BETTER_AUTH_SECRET`                                         | Signs sessions and OAuth queries                                                                                             | required                          |
 | `KEYCLOAK_ISSUER`                                            | The realm URL, e.g. `https://auth.example.com/realms/lab`                                                                    | required                          |
 | `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET`               | The viewer's Keycloak client                                                                                                 | required                          |
+| `KEYCLOAK_MCP_CLIENT_ID`                                     | The public client MCP tokens must be issued to                                                                               | `viewer-mcp`                      |
 | `NEXTCLOUD_URL`, `NEXTCLOUD_USER`, `NEXTCLOUD_APP_PASSWORD`  | Where the files live                                                                                                         | required                          |
 | `NEXTCLOUD_ROOT`                                             | The folder in that account the viewer owns                                                                                   | `viewer`                          |
 | `NEXTCLOUD_OAUTH_CLIENT_ID`, `NEXTCLOUD_OAUTH_CLIENT_SECRET` | The Nextcloud OAuth 2 client members link their own account with; no Nextcloud import when empty                             | empty                             |
