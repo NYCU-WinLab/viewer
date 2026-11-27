@@ -209,6 +209,11 @@ export const uploadDocument = defineAction({
   },
 })
 
+// A PDF starts with %PDF- within its first 1024 bytes.
+function isPdf(bytes: Uint8Array) {
+  return Buffer.from(bytes.subarray(0, 1024)).includes("%PDF-")
+}
+
 /**
  * Stores a file as a new document, or with documentId as the next version
  * of one (the caller has checked edit access). docx and pptx become PDF
@@ -232,6 +237,7 @@ export async function storeVersion(
   const kind = kindOf(input.fileName)
   if (body.byteLength > MAX_DOCUMENT_BYTES) throw new Error("檔案太大")
   const pdf = kind === "pdf" ? body : await toPdf(kind, body)
+  if (!isPdf(pdf)) throw new Error("這不是有效的 PDF 檔案")
 
   // A new document gets its row first (with no version yet, so nobody
   // lists it), then the files, then the version.
