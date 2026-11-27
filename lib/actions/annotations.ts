@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from "drizzle-orm"
+import { and, asc, eq, inArray, isNull, ne, or } from "drizzle-orm"
 import { alias } from "drizzle-orm/pg-core"
 import { z } from "zod"
 
@@ -208,20 +208,39 @@ export const deleteAnnotation = defineAction({
   name: "delete_annotation",
   title: "刪除標記",
   description:
-    "Deletes a mark and its sticky note. Its author can, and anyone with edit access.",
+    "Deletes a mark and its sticky note. Anyone with edit access can. Its author with comment access can only while no one else has replied, since the replies go with it.",
   kind: "mutation",
   guests: true,
   input: z.object({ id: uuid }),
   run: async (actor, { id }) => {
     const documentId = await documentOf(id)
     const access = await requireAccess(actor, documentId, "comment")
-    const [mark] = await db
-      .select({ authorId: annotations.authorId })
-      .from(annotations)
-      .where(eq(annotations.id, id))
-    if (mark.authorId !== actor.userId && access === "comment")
-      throw new Error("只能刪除自己的標記")
-    await db.delete(annotations).where(eq(annotations.id, id))
+    await db.transaction(async (tx) => {
+      // The row lock waits for a reply being written (its foreign key locks
+      // the mark), so the check below sees every reply the delete would take.
+      const [mark] = await tx
+        .select({ authorId: annotations.authorId })
+        .from(annotations)
+        .where(eq(annotations.id, id))
+        .for("update")
+      if (!mark) throw new Error("找不到這個標記")
+      if (access === "comment") {
+        if (mark.authorId !== actor.userId)
+          throw new Error("只能刪除自己的標記")
+        const [reply] = await tx
+          .select({ id: comments.id })
+          .from(comments)
+          .where(
+            and(
+              eq(comments.annotationId, id),
+              or(isNull(comments.authorId), ne(comments.authorId, actor.userId))
+            )
+          )
+          .limit(1)
+        if (reply) throw new Error("已有其他成員回覆，不能刪除這個標記")
+      }
+      await tx.delete(annotations).where(eq(annotations.id, id))
+    })
     return { id }
   },
 })

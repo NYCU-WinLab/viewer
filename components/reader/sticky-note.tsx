@@ -318,7 +318,10 @@ export function MarkActions({
           {mark.resolvedAt ? "重新打開" : "已處理"}
         </ContextMenuItem>
       )}
-      {(mark.mine || canManage) && (
+      {/* Without edit access, a mark goes only while every note on it is
+          its author's own: deleting it would take other members' replies. */}
+      {(canManage ||
+        (mark.mine && mark.comments.every((note) => note.mine))) && (
         <ContextMenuItem
           variant="destructive"
           onClick={async () => {
